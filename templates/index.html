@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>GreenPrompt</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+
+        textarea {
+            width: 100%;
+            height: 100px;
+        }
+
+        .result {
+            background: white;
+            padding: 20px;
+            margin-top: 20px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>GreenPrompt </h1>
+    <form method="post">
+        <label for="prompt">Enter your prompt:</label><br>
+        <textarea name="prompt" required></textarea><br><br>
+        <label for="model">Model:</label>
+        <input type="text" name="model" value="llama2"><br><br>
+        <button type="submit">Submit</button>
+    </form>
+    {% if result %}
+    <div class="result">
+        {% if result.error %}
+        <p><strong>Error:</strong> {{ result.error }}</p>
+        {% else %}
+        <h3>Response:</h3>
+        <p>{{ result.response }}</p>
+        <h4>Stats:</h4>
+        <ul>
+            <li><strong>Model:</strong> {{ result.model }}</li>
+            <li><strong>Prompt Tokens:</strong> {{ result.prompt_tokens }}</li>
+            <li><strong>Completion Tokens:</strong> {{ result.completion_tokens }}</li>
+            <li><strong>Total Tokens:</strong> {{ result.total_tokens }}</li>
+            <li><strong>Duration:</strong> {{ result.duration_sec | round(2) }} sec</li>
+            <li><strong>Estimated Energy:</strong> {{ result.energy_wh | round(6) }} Wh</li>
+        </ul>
+        {% endif %}
+    </div>
+    {% endif %}
+</body>
+
+</html>
