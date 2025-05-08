@@ -1,0 +1,6 @@
+# Ignore poetry files
+poetry.lock
+# Ignore Python cache files
+__pycache__/
+*.py[cod]
+
