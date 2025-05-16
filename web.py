@@ -1,23 +1,21 @@
-from flask import Flask, request, render_template
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 from core import run_prompt
 
 app = Flask(__name__)
+CORS(app)  # Allow cross-origin requests
 
-@app.route("/", methods=["GET", "POST"])
-def index():
-    result = None
-    if request.method == "POST":
-        prompt = request.form["prompt"]
-        model = request.form.get("model", "llama2")
-        try:
-            result = run_prompt(prompt, model=model)
-        except Exception as e:
-            result = {"error": str(e)}
-    return render_template("index.html", result=result)
+@app.route('/api/prompt', methods=['POST'])
+def handle_prompt():
+    data = request.get_json()
+    prompt = data.get('prompt', '')
+    model = data.get('model', 'llama2')
 
-def run_app():
-    print("🌱 Starting GreenPrompt at http://localhost:5000 ...")
-    app.run(port=5000, debug=True)
+    if not prompt:
+        return jsonify({'error': 'Prompt is required'}), 400
 
-if __name__ == "__main__":
-    run_app()
+    result = run_prompt(prompt, model)
+    return jsonify(result)
+
+if __name__ == '__main__':
+    app.run(debug=True)
