@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from core import run_prompt
+from greenprompt.core import run_prompt
 
 app = Flask(__name__)
 CORS(app)  # Allow cross-origin requests
