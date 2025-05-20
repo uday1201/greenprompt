@@ -1,7 +1,7 @@
 # GreenPrompt 🌱
 
 ## Overview
-GreenPrompt is a local-first tool for macOS that tracks and visualizes the real-world energy consumption of AI prompts. It intercepts or wraps LLM calls (via Ollama’s local API), samples CPU/GPU power, logs prompt metadata and energy usage, and provides both CLI and Web UI interfaces for analysis.
+GreenPrompt is a local-first tool that tracks and visualizes the real-world energy consumption of AI prompts, locally. It intercepts or wraps LLM calls (via Ollama’s local API), samples CPU/GPU power, logs prompt metadata and energy usage, and provides both CLI and Web UI interfaces for analysis.
 
 > **macOS only** (uses `powermetrics` for power sampling)
 
@@ -60,7 +60,7 @@ greenprompt/
    ```bash
    git clone <repo-url>
    cd greenprompt
-   pip install -r requirements.txt
+   poetry install
    ```
 
 3. **Initialize**  
