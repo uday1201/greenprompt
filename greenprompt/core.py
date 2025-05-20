@@ -2,8 +2,10 @@ import requests
 import time
 import psutil
 import os
-import tiktoken  # Ensure this library is installed: pip install tiktoken
+import tiktoken
+import constants
 from .sysUsage import get_system_info, measure_power_for_pid, has_gpu, get_gpu_usage
+from greenprompt.dbconn import save_prompt_usage
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
@@ -54,25 +56,12 @@ def estimate_tokens_from_prompt(prompt, model="gpt-3.5"):
     tokens = enc.encode(prompt)
     return len(tokens)
 
-def get_cpu_power_estimate():
-    cpu_percent = psutil.cpu_percent(interval=1)
-    estimated_power = (cpu_percent / 100.0) * 15  # Assume 15W CPU
-    return estimated_power
-
-def estimate_energy(cpu_before, cpu_after, duration_sec):
-    avg_power = (cpu_before + cpu_after) / 2
-    return (avg_power * duration_sec) / 3600  # Convert to Wh
-
-def run_prompt(prompt, model="llama2"):
-    # Get system information
-    system_info = get_system_info()
-    print("System Information:")
-    for key, value in system_info.items():
-        print(f"{key}: {value}")
+def run_prompt(prompt, model="llama2", monitor=False):
 
     # Measure power usage before running the prompt
     current_pid = os.getpid()
-    power_usage_before = measure_power_for_pid(current_pid, duration=1)
+    print("\nMeasuring power usage before running the prompt...")
+    print(f"Current PID: {current_pid}")
 
     # Check for GPU and its usage
     if has_gpu():
@@ -84,17 +73,17 @@ def run_prompt(prompt, model="llama2"):
         print("\nNo GPU detected.")
 
     # Run the prompt
-    cpu_before = get_cpu_power_estimate()
     start_time = time.time()
-
+    end_time = None
     try:
         response = requests.post(OLLAMA_URL, json={
             "model": model,
             "prompt": prompt,
             "stream": False
         })
-        duration = time.time() - start_time
-        cpu_after = get_cpu_power_estimate()
+        end_time = time.time()
+        # Measure power usage after running the prompt
+        duration = end_time - start_time
     except requests.exceptions.ConnectionError:
         raise RuntimeError("❌ Could not connect to Ollama at http://localhost:11434")
 
@@ -102,24 +91,44 @@ def run_prompt(prompt, model="llama2"):
         raise RuntimeError(f"❌ Ollama error: {response.status_code} – {response.text}")
 
     # Measure power usage after running the prompt
-    power_usage_after = measure_power_for_pid(current_pid, duration=1)
+    power_usage = measure_power_for_pid(current_pid, start_time, end_time, monitor)
 
     data = response.json()
     prompt_tokens = data.get("prompt_eval_count", 0)
     completion_tokens = data.get("eval_count", 0)
     total_tokens = prompt_tokens + completion_tokens
-    energy_wh = estimate_energy(cpu_before, cpu_after, duration)
+    total_energy = power_usage.get("energy_wh", 0)
+    combined_power_w = power_usage.get("combined_power_w", 0)
+    cpu_power = power_usage.get("cpu_power_w", 0)
+    gpu_power = power_usage.get("gpu_power_w", 0)
+    baseline_energy = power_usage.get("baseline_energy_wh", 0)
+    baseline_power = power_usage.get("baseline_power_w", 0)
+    energy_estimate_tokens = estimate_energy_from_tokens(model, total_tokens)
+    energy_estimate_prompt = estimate_energy_from_tokens(model, prompt_tokens)
 
-    return {
+    response = {
+        "prompt": prompt,
         "response": data.get("response", ""),
         "model": model,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": total_tokens,
+        "total_energy (Wh)": total_energy,
         "duration_sec": duration,
-        "energy_wh": energy_wh,
-        "power_usage_before": power_usage_before,
-        "power_usage_after": power_usage_after,
+        "combined_power_w (W)": combined_power_w,
+        "cpu_power_w (W)": cpu_power,
+        "gpu_power_w (W)": gpu_power,
+        "energy_estimate_tokens": energy_estimate_tokens,
+        "energy_estimate_prompt": energy_estimate_prompt,
+        "baseline_energy (Wh)": baseline_energy,
+        "baseline_power (W)": baseline_power,
         "gpu_usage": gpu_usage if has_gpu() else "No GPU detected",
-        "system_info": system_info
+        "system_info": get_system_info()
     }
+    
+    try:
+        save_prompt_usage(response)
+    except Exception as e:
+        print(f"Warning: Failed to save prompt usage: {e}")
+
+    return response

@@ -3,4 +3,8 @@ poetry.lock
 # Ignore Python cache files
 __pycache__/
 *.py[cod]
-
+# Ignore constant files
+*/constants.py
+# Ignore DB files
+*.sqlite3
+*/*.db
