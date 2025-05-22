@@ -51,11 +51,17 @@ greenprompt/
 ```
 
 ## Installation & Setup
-1. **Requirements**  
-   - macOS with `powermetrics` (requires `sudo` privileges)  
-   - Python 3.8+  
-   - Ollama installed and models pulled
 
+### PyPI Installation
+You can install GreenPrompt directly from PyPI:
+
+```bash
+pip install greenprompt
+```
+
+This will install both the `greenprompt` and `gp` CLI commands.
+
+### Development Installation
 2. **Clone & Install**  
    ```bash
    git clone <repo-url>
@@ -77,11 +83,26 @@ greenprompt/
 
 ## Usage
 
-### CLI
+### CLI Usage
+Once installed, use the following commands:
+
 ```bash
-greenprompt --setup            # Setup Ollama port & DB
-greenprompt "Hello, world!"    # Run prompt via CLI and log
-greenprompt --model llama2     # Specify model
+# Setup Ollama port, initialize database, and generate constants
+greenprompt setup
+# or using alias
+gp setup
+
+# Start the web API server and dashboard
+greenprompt run --port 5000
+gp run --port 5000
+
+# Send a prompt and display stats
+greenprompt prompt "Hello, world!" --model llama2
+gp prompt "Hello, world!" --model llama2
+
+# Monitor the last 10 prompt usage entries
+greenprompt monitor --count 10
+gp monitor --count 10
 ```
 
 ### Web Dashboard
