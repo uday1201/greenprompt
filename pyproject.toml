@@ -1,6 +1,6 @@
 [tool.poetry]
-Name = "greenprompt"
-Version = "1.0"
+name = "greenprompt"
+version = "1.2"
 description = "A green prompt tool to estimate energy usage of LLM prompts"
 readme = "README.md"
 authors = ["Uday <udapra@gmail.com>"]
