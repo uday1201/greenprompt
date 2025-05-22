@@ -1,6 +1,8 @@
 import sqlite3
 import os
+import json
 from datetime import datetime
+from greenprompt.sysUsage import get_system_info
 
 # Path to the SQLite database file
 DB_PATH = os.path.join(os.getcwd(), "greenprompt_usage.db")
@@ -35,7 +37,8 @@ def init_db():
             baseline_energy_wh REAL,
             cpu_power_w REAL,
             gpu_power_w REAL,
-            combined_power_w REAL
+            combined_power_w REAL,
+            system_info TEXT
         )
     """)
     conn.commit()
@@ -47,13 +50,14 @@ def save_prompt_usage(data: dict):
     """
     conn = get_connection()
     cursor = conn.cursor()
+    system_info = json.dumps(get_system_info())
     cursor.execute("""
         INSERT INTO prompt_usage (
             timestamp, prompt, response, model, prompt_tokens,
             completion_tokens, total_tokens, duration_sec, energy_wh,
             baseline_power_w, baseline_energy_wh,
-            cpu_power_w, gpu_power_w, combined_power_w
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            cpu_power_w, gpu_power_w, combined_power_w, system_info
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         datetime.utcnow().isoformat(),
         data.get("prompt"),
@@ -68,7 +72,8 @@ def save_prompt_usage(data: dict):
         data.get("baseline_energy (Wh)") or data.get("baseline_energy_wh"),
         data.get("cpu_power_w (W)") or data.get("cpu_power_w"),
         data.get("gpu_power_w (W)") or data.get("gpu_power_w"),
-        data.get("combined_power_w (W)") or data.get("combined_power_w")
+        data.get("combined_power_w (W)") or data.get("combined_power_w"),
+        system_info
     ))
     conn.commit()
     conn.close()

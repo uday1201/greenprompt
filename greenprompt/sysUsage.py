@@ -5,9 +5,8 @@ import cpuinfo
 import shutil
 import subprocess
 import time
-import os
 import re
-import constants
+from . import constants
 
 def get_system_info():
     info = {
@@ -97,9 +96,11 @@ def measure_power_for_pid(pid, start_time, end_time, monitor=None):
     if os_type == "Darwin":
         return measure_power_mac(start_time, end_time, monitor)
     elif os_type == "Linux":
-        return measure_power_linux(pid, start_time, end_time)
+        #return measure_power_linux(pid, start_time, end_time)
+        return "Linux power measurement not implemented."
     elif os_type == "Windows":
-        return measure_power_windows(pid, start_time, end_time)
+        #return measure_power_windows(pid, start_time, end_time)
+        return "Windows power measurement not implemented."
     else:
         return "Unsupported OS for power measurement."
     

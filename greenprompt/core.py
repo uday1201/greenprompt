@@ -3,8 +3,8 @@ import time
 import psutil
 import os
 import tiktoken
-import constants
-from .sysUsage import get_system_info, measure_power_for_pid, has_gpu, get_gpu_usage
+from . import constants
+from greenprompt.sysUsage import get_system_info, measure_power_for_pid, has_gpu, get_gpu_usage
 from greenprompt.dbconn import save_prompt_usage
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
@@ -60,17 +60,15 @@ def run_prompt(prompt, model="llama2", monitor=False):
 
     # Measure power usage before running the prompt
     current_pid = os.getpid()
-    print("\nMeasuring power usage before running the prompt...")
     print(f"Current PID: {current_pid}")
 
     # Check for GPU and its usage
     if has_gpu():
-        print("\nGPU detected.")
+        print("GPU detected.")
         gpu_usage = get_gpu_usage()
-        print("GPU Usage:")
-        print(gpu_usage)
+        print("GPU Usage: " + gpu_usage)
     else:
-        print("\nNo GPU detected.")
+        print("No GPU detected.")
 
     # Run the prompt
     start_time = time.time()

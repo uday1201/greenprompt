@@ -3,7 +3,7 @@ import threading
 import time
 import subprocess
 import re
-from sysUsage import parse_powermetrics_output
+from greenprompt.sysUsage import parse_powermetrics_output
 
 class PowerMonitor:
     def __init__(self, sample_interval=1, window_size=600):  # store 10 minutes
@@ -26,7 +26,6 @@ class PowerMonitor:
                 stderr=subprocess.DEVNULL
             ).decode()
             parsed = parse_powermetrics_output(out, 1)  # use 1 second sample duration
-            print(f"CPU Power: {parsed['cpu_power_w']}, GPU Power: {parsed['gpu_power_w']}")
             return {
                 "combined_power_w": parsed["combined_power_w"],
                 "cpu_power_w": parsed["cpu_power_w"],

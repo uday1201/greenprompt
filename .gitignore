@@ -8,3 +8,7 @@ __pycache__/
 # Ignore DB files
 *.sqlite3
 */*.db
+# Ignore .log files
+*.log
+# Ignore dist folder
+dist/
