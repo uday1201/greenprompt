@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from greenprompt.core import run_prompt
-from . import constants
+from greenprompt import constants
 from greenprompt.dbconn import get_prompt_usage
 import logging
 from greenprompt.setup import monitor
@@ -37,6 +37,8 @@ def handle_prompt():
         return jsonify({'error': 'Prompt is required'}), 400
     if constants.OS == "Darwin":
         result = run_prompt(prompt, model, monitor=monitor)
+    else:
+        result = run_prompt(prompt, model, monitor=False)
     logging.info(f"Prompt handled successfully")
     return jsonify(result)
 

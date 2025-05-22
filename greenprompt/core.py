@@ -3,7 +3,7 @@ import time
 import psutil
 import os
 import tiktoken
-from . import constants
+from greenprompt import constants
 from greenprompt.sysUsage import get_system_info, measure_power_for_pid, has_gpu, get_gpu_usage
 from greenprompt.dbconn import save_prompt_usage
 

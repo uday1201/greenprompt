@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import time
 import re
-from . import constants
+from greenprompt import constants
 
 def get_system_info():
     info = {
