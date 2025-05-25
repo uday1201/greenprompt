@@ -106,10 +106,24 @@ gp monitor --count 10
 ```
 
 ### Web Dashboard
-```bash
-python web.py
-# Open http://localhost:5000 in your browser
-```
+
+1. Open a new terminal window or tab.
+
+2. Navigate to the frontend directory:
+
+   ```bash
+   cd ollama-ui
+   ```
+3. Install dependencies (if you haven't already):
+   ```bash
+   npm install
+   ```
+4. Run the frontend development server:
+   ```bash
+   npm run dev
+   ```
+5. The frontend UI will be accessible at:
+   http://localhost:5713/chat
 
 ### API Endpoints
 - `POST /api/generate` → Run a prompt  

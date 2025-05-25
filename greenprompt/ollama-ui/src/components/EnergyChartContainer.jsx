@@ -1,38 +1,44 @@
 import React, { useEffect, useState } from 'react';
-import EnergyChart from './EnergyChart';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import axios from 'axios';
 
-export default function EnergyChartContainer({ model, startDate, endDate }) {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(false);
+const EnergyChartContainer = ({ model }) => {
+    const [data, setData] = useState([]);
 
-  useEffect(() => {
-    async function fetchData() {
-      setLoading(true);
-      let url = `/api/usage/model/${model}`;
-      if (startDate && endDate) {
-        url = `/api/usage/timeframe?start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
-      }
-      try {
-        const res = await fetch(url);
-        const json = await res.json();
-        // Map API data to chart data structure (timestamp -> time string)
-        const mapped = json.map(item => ({
-          time: new Date(item.timestamp).toLocaleTimeString(),
-          energy: item.energy_wh,
-          cpu: item.cpu_power_w,
-          gpu: item.gpu_power_w,
-        }));
-        setData(mapped);
-      } catch (error) {
-        console.error('Failed to fetch energy data', error);
-      }
-      setLoading(false);
-    }
-    fetchData();
-  }, [model, startDate, endDate]);
+    useEffect(() => {
+        const fetchEnergyData = async () => {
+            try {
+                const response = await axios.get('/api/usage/all');
+                console.log(response.data)
+                const filtered = response.data
+                    .filter(item => !model || item.model === model)
+                    .map(item => ({
+                        timestamp: new Date(item.timestamp).toLocaleString(),
+                        energy: item.energy_wh,
+                    }));
+                setData(filtered);
+            } catch (error) {
+                console.error("Error fetching energy data", error);
+            }
+        };
+        fetchEnergyData();
+    }, [model]);
 
-  if (loading) return <p>Loading energy data...</p>;
-  if (!data.length) return <p>No data available</p>;
+    return (
+        <div className="bg-[#2e2c34] p-4 rounded-lg shadow-md">
+            <h2 className="text-xl font-semibold text-green-400 mb-4">Energy Consumption Chart</h2>
+            <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={data}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#555" />
+                    <XAxis dataKey="timestamp" tick={{ fill: 'white' }} />
+                    <YAxis tick={{ fill: 'white' }} />
+                    <Tooltip contentStyle={{ backgroundColor: '#1f1e24', border: 'none' }} labelStyle={{ color: 'white' }} />
+                    <Legend />
+                    <Line type="monotone" dataKey="energy" stroke="#82ca9d" strokeWidth={2} />
+                </LineChart>
+            </ResponsiveContainer>
+        </div>
+    );
+};
 
-  return <EnergyChart data={data} />;
-}
+export default EnergyChartContainer;

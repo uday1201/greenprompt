@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FormControl, InputLabel, MenuItem, Select } from '@mui/material';
-import EnergyChartContainer from './EnergyChart';
+import EnergyChartContainer from './EnergyChartContainer';
 import PromptTable from './PromptTable';
 import Overview from './Overview';
 import HomeIcon from '@mui/icons-material/Home';
@@ -28,7 +28,11 @@ export default function Dashboard() {
 
     const sectionContent = {
         overview: <Overview />,
-        energychart: <EnergyChartContainer model={value} startDate={startDate} endDate={endDate} />,
+        energychart: (
+            <EnergyChartContainer
+                model={value}
+            />
+        ),
         prompthistory: <PromptTable model={value} startDate={startDate} endDate={endDate} />,
     };
 
@@ -94,7 +98,7 @@ export default function Dashboard() {
                                 </Select>
                             </FormControl>
                         </div>
-                        
+
                         {/* Start/End datetime inputs */}
                         <div className="flex gap-4 mb-4">
                             <div>

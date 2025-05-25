@@ -64,9 +64,9 @@ function App() {
         {response && (
           <div className="text-white w-full max-w-3xl">
             <p className="whitespace-pre-line mt-2">{response.response}</p>
-            <button className='bg-green-600 p-2 rounded-lg text-sm font-semibold cursor-pointer hover:bg-green-700' type="button" onClick={toggleAnalytics}>
+            {/* <button className='bg-green-600 p-2 rounded-lg text-sm font-semibold cursor-pointer hover:bg-green-700' type="button" onClick={toggleAnalytics}>
               {showAnalytics ? 'Hide Analytics' : 'Show Analytics'}
-            </button>
+            </button> */}
           </div>
         )}
         {error && <Alert severity="error">{error}</Alert>}
