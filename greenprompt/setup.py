@@ -2,7 +2,7 @@ import os
 from greenprompt.sysUsage import get_system_info
 from greenprompt.dbconn import init_db
 import subprocess
-import constants
+from greenprompt import constants
 from greenprompt.samplerMac import PowerMonitor
 
 # global variable to hold the power monitor instance

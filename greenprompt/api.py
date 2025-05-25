@@ -1,10 +1,12 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from greenprompt.core import run_prompt
-import constants
+from greenprompt import constants
 from greenprompt.dbconn import get_prompt_usage
 import logging
-from greenprompt.setup import monitor
+
+if constants.OS == "Darwin":
+    from greenprompt.setup import monitor
 
 # Clear the log file at the start of the script
 with open('./api.log', 'w'):
@@ -38,7 +40,7 @@ def handle_prompt():
     if constants.OS == "Darwin":
         result = run_prompt(prompt, model, monitor=monitor)
     else:
-        result = run_prompt(prompt, model)  # No monitor on non-macOS
+        result = run_prompt(prompt, model, False)
     logging.info(f"Prompt handled successfully")
     return jsonify(result)
 
