@@ -40,7 +40,7 @@ def handle_prompt():
     if constants.OS == "Darwin":
         result = run_prompt(prompt, model, monitor=monitor)
     else:
-        result = run_prompt(prompt, model, monitor=False)
+        result = run_prompt(prompt, model, False)
     logging.info(f"Prompt handled successfully")
     return jsonify(result)
 

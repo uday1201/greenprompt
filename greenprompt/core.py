@@ -90,17 +90,29 @@ def run_prompt(prompt, model="llama2", monitor=False):
 
     # Measure power usage after running the prompt
     power_usage = measure_power_for_pid(current_pid, start_time, end_time, monitor)
+    print(power_usage)
 
     data = response.json()
     prompt_tokens = data.get("prompt_eval_count", 0)
     completion_tokens = data.get("eval_count", 0)
     total_tokens = prompt_tokens + completion_tokens
-    total_energy = power_usage.get("energy_wh", 0)
-    combined_power_w = power_usage.get("combined_power_w", 0)
-    cpu_power = power_usage.get("cpu_power_w", 0)
-    gpu_power = power_usage.get("gpu_power_w", 0)
-    baseline_energy = power_usage.get("baseline_energy_wh", 0)
-    baseline_power = power_usage.get("baseline_power_w", 0)
+    # Check if power usage data is complete
+    if power_usage and isinstance(power_usage, dict) and "energy_wh" in power_usage:
+        total_energy = power_usage.get("energy_wh", 0)
+        combined_power_w = power_usage.get("combined_power_w", 0)
+        cpu_power = power_usage.get("cpu_power_w", 0)
+        gpu_power = power_usage.get("gpu_power_w", 0)
+        baseline_energy = power_usage.get("baseline_energy_wh", 0)
+        baseline_power = power_usage.get("baseline_power_w", 0)
+    else:
+        total_energy = 0
+        combined_power_w = 0
+        cpu_power = 0
+        gpu_power = 0
+        baseline_energy = 0
+        baseline_power = 0
+        print("Warning: Power usage data is incomplete or missing.")
+
     energy_estimate_tokens = estimate_energy_from_tokens(model, total_tokens)
     energy_estimate_prompt = estimate_energy_from_tokens(model, prompt_tokens)
 
