@@ -8,6 +8,7 @@ from greenprompt.samplerMac import PowerMonitor
 # global variable to hold the power monitor instance
 global monitor
 
+monitor = None
 if constants.OS == "Darwin":
     # Initialize the power monitor for macOS
     monitor = PowerMonitor()
