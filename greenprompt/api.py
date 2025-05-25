@@ -4,7 +4,9 @@ from greenprompt.core import run_prompt
 from greenprompt import constants
 from greenprompt.dbconn import get_prompt_usage
 import logging
-from greenprompt.setup import monitor
+
+if constants.OS == "Darwin":
+    from greenprompt.setup import monitor
 
 # Clear the log file at the start of the script
 with open('./api.log', 'w'):
