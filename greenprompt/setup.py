@@ -2,12 +2,13 @@ import os
 from greenprompt.sysUsage import get_system_info
 from greenprompt.dbconn import init_db
 import subprocess
-from . import constants
+import constants
 from greenprompt.samplerMac import PowerMonitor
 
 # global variable to hold the power monitor instance
 global monitor
 
+monitor = None
 if constants.OS == "Darwin":
     # Initialize the power monitor for macOS
     monitor = PowerMonitor()
