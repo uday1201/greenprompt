@@ -7,7 +7,7 @@ from greenprompt import constants
 from greenprompt.sysUsage import get_system_info, measure_power_for_pid, has_gpu, get_gpu_usage
 from greenprompt.dbconn import save_prompt_usage
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 
 def estimate_energy_from_tokens(model, token_count):
     """
@@ -83,7 +83,7 @@ def run_prompt(prompt, model="llama2", monitor=False):
         # Measure power usage after running the prompt
         duration = end_time - start_time
     except requests.exceptions.ConnectionError:
-        raise RuntimeError("❌ Could not connect to Ollama at http://localhost:11434")
+        raise RuntimeError("❌ Could not connect to Ollama at http://127.0.0.1:5000:11434")
 
     if response.status_code != 200:
         raise RuntimeError(f"❌ Ollama error: {response.status_code} – {response.text}")

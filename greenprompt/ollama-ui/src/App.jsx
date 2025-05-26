@@ -1,9 +1,9 @@
-import { useState } from 'react';
-import axios from 'axios';
 import LeaderboardIcon from '@mui/icons-material/Leaderboard';
-import CircularProgress from '@mui/material/CircularProgress';
 import SendIcon from '@mui/icons-material/Send';
 import Alert from '@mui/material/Alert';
+import CircularProgress from '@mui/material/CircularProgress';
+import axios from 'axios';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 function App() {
@@ -32,7 +32,7 @@ function App() {
     setError('');
 
     try {
-      const res = await axios.post('http://localhost:5000/api/prompt', {
+      const res = await axios.post('http://127.0.0.1:5000/api/prompt', {
         prompt,
         model,
       });

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
 import axios from 'axios';
+import { useEffect, useState } from 'react';
 
 export default function Overview() {
     const [data, setData] = useState([]);
@@ -7,7 +7,7 @@ export default function Overview() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        axios.get('http://localhost:5000/api/usage/all')
+        axios.get('http://127.0.0.1:5000/api/usage/all')
             .then(response => {
                 const all = response.data;
                 setData(all);

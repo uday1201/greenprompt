@@ -20,7 +20,7 @@ GreenPrompt is a local-first tool that tracks and visualizes the real-world ener
 2. **Prompt Execution**  
    - `core.py`’s `run_prompt` function:
      - Retrieves a 1‑minute baseline average from `PowerMonitor`.
-     - Sends the user prompt to Ollama at `localhost:11434` (or via proxy).
+     - Sends the user prompt to Ollama at `127.0.0.1:5000:11434` (or via proxy).
      - Records start and end timestamps.
      - Queries `PowerMonitor` for samples during execution.
      - Calculates average power and energy.
@@ -123,7 +123,7 @@ gp monitor --count 10
    npm run dev
    ```
 5. The frontend UI will be accessible at:
-   http://localhost:5713/chat
+   http://127.0.0.1:5000:5713/chat
 
 ### API Endpoints
 - `POST /api/generate` → Run a prompt  
@@ -134,7 +134,7 @@ gp monitor --count 10
 ## Limitations
 - **macOS only** (relies on `powermetrics`)  
 - Per-process power usage is estimated proportionally from system metrics  
-- CLI proxy requires redirecting Ollama to use `localhost:11434`
+- CLI proxy requires redirecting Ollama to use `127.0.0.1:5000:11434`
 
 ## Future Work
 - Linux & Windows support (via Intel Power Gadget, `rapl`, `nvidia-smi`)  
