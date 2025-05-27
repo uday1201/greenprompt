@@ -59,6 +59,30 @@ You can install GreenPrompt directly from PyPI:
 pip install greenprompt
 ```
 
+Or, can build it using Poetry
+```bash
+# If you don't have Poetry, install it first:
+pip install poetry
+
+# Install dependencies and build the package
+poetry install
+
+# (Optional) To build a distributable wheel and sdist:
+poetry build
+```
+And install it
+
+```bash
+# If you want to install the built package locally (after poetry build):
+pip install dist/*.whl
+```
+
+Or, if you just want to install in your current environment for development:
+
+```bash
+poetry install
+```
+
 This will install both the `greenprompt` and `gp` CLI commands.
 
 ### Development Installation
