@@ -7,6 +7,8 @@ from greenprompt.samplerMac import PowerMonitor
 
 # global variable to hold the power monitor instance
 global monitor
+# Ollama URL for local server
+OLLAMA_URL = "http://127.0.0.1:11434"
 
 monitor = None
 if constants.OS == "Darwin":
@@ -60,6 +62,8 @@ def main():
         for key, value in system_info.items():
             sanitized_key = sanitize_key(key)
             py_file.write(f"{sanitized_key} = {repr(value)}\n")
+        # Add ollama URL
+        py_file.write(f"OLLAMA_URL = {repr(OLLAMA_URL)}\n")
     print(f"✅ System information saved to {constants_py_path}")
 
     # Check if Ollama is installed

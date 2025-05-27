@@ -31,6 +31,8 @@ def init_db():
             prompt_tokens INTEGER,
             completion_tokens INTEGER,
             total_tokens INTEGER,
+            energy_estimate_prompt REAL,
+            energy_estimate_tokens REAL,
             duration_sec REAL,
             energy_wh REAL,
             baseline_power_w REAL,
@@ -54,10 +56,10 @@ def save_prompt_usage(data: dict):
     cursor.execute("""
         INSERT INTO prompt_usage (
             timestamp, prompt, response, model, prompt_tokens,
-            completion_tokens, total_tokens, duration_sec, energy_wh,
+            completion_tokens, total_tokens, energy_estimate_prompt, energy_estimate_tokens ,duration_sec, energy_wh,
             baseline_power_w, baseline_energy_wh,
             cpu_power_w, gpu_power_w, combined_power_w, system_info
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         datetime.utcnow().isoformat(),
         data.get("prompt"),
@@ -66,6 +68,8 @@ def save_prompt_usage(data: dict):
         data.get("prompt_tokens"),
         data.get("completion_tokens"),
         data.get("total_tokens"),
+        data.get("energy_estimate_prompt"),
+        data.get("energy_estimate_tokens"),
         data.get("duration_sec"),
         data.get("total_energy (Wh)") or data.get("energy_wh"),
         data.get("baseline_power (W)") or data.get("baseline_power_w"),

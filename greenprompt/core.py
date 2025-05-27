@@ -7,7 +7,7 @@ from greenprompt import constants
 from greenprompt.sysUsage import get_system_info, measure_power_for_pid, has_gpu, get_gpu_usage
 from greenprompt.dbconn import save_prompt_usage
 
-OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
+OLLAMA_URL = constants.OLLAMA_URL + "/api/generate"
 
 def estimate_energy_from_tokens(model, token_count):
     """
