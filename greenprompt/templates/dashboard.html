@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>GreenPrompt Analytics Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" rel="stylesheet">
+    <style>
+      body { background-color:rgb(206, 228, 222); color: #333; }
+      .card { background-color: #fff; }
+      .dark-mode .card { background-color: #1e1e1e; }
+      .chart-card { margin-bottom: 20px; }
+      nav .brand-logo { font-size: 1.5rem; }
+    </style>
+</head>
+<body>
+    <h1>📊 GreenPrompt Analytics Dashboard</h1>
+
+    <div class="container">
+        <div class="row">
+            <div class="col s12 m12 chart-card">
+            <div class="card"><div class="card-content"><div id="total-prompts-energy"></div></div></div>
+            </div>
+        </div>
+      <div class="row">
+        <div class="col s12 m12 chart-card">
+          <div class="card"><div class="card-content"><div id="energy-usage-timeline"></div></div></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col s12 m6 chart-card">
+          <div class="card"><div class="card-content"><div id="cpu-gpu-usage"></div></div></div>
+        </div>
+        <div class="col s12 m6 chart-card">
+          <div class="card"><div class="card-content"><div id="estimated-vs-actual"></div></div></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col s12 m6 chart-card">
+          <div class="card"><div class="card-content"><div id="baseline-vs-total"></div></div></div>
+        </div>
+        <div class="col s12 m6 chart-card">
+          <div class="card"><div class="card-content"><div id="model-comparison"></div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+
+    <script>
+        var totalPromptsEnergyFig = JSON.parse('{{ total_prompts_energy|safe }}');
+        var energyUsageFig = JSON.parse('{{ energy_usage|safe }}');
+        var cpuGpuUsageFig = JSON.parse('{{ cpu_gpu_usage|safe }}');
+        var estimatedVsActualFig = JSON.parse('{{ estimated_vs_actual|safe }}');
+        var baselineVsTotalFig = JSON.parse('{{ baseline_vs_total|safe }}');
+        var modelComparisonFig = JSON.parse('{{ model_comparison|safe }}');
+
+        Plotly.newPlot('total-prompts-energy', totalPromptsEnergyFig.data, totalPromptsEnergyFig.layout);
+        Plotly.newPlot('energy-usage-timeline', energyUsageFig.data, energyUsageFig.layout);
+        Plotly.newPlot('cpu-gpu-usage', cpuGpuUsageFig.data, cpuGpuUsageFig.layout);
+        Plotly.newPlot('estimated-vs-actual', estimatedVsActualFig.data, estimatedVsActualFig.layout);
+        Plotly.newPlot('baseline-vs-total', baselineVsTotalFig.data, baselineVsTotalFig.layout);
+        Plotly.newPlot('model-comparison', modelComparisonFig.data, modelComparisonFig.layout);
+    </script>
+</body>
+</html>

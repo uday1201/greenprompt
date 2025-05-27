@@ -140,5 +140,13 @@ def main():
         except KeyboardInterrupt:
             print("\nStopped tailing the API logs.")
 
+    elif args.command == 'dashboard':
+        print("Starting the dashboard...")
+        # Open a tab in a web browser at http://localhost:5000/dashboard
+        try:
+            subprocess.run(["open", "http://localhost:5000/dashboard"], check=True)
+        except Exception as e:
+            print(f"Error opening dashboard: {e}")
+
 if __name__ == "__main__":
     main()

@@ -12,3 +12,5 @@ __pycache__/
 *.log
 # Ignore dist folder
 dist/
+# Ignore ipynb files
+*.ipynb
