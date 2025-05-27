@@ -42,7 +42,7 @@ greenprompt/
 ├── samplerMac.py           # macOS PowerMonitor for sampling power
 ├── sysUsage.py             # OS-agnostic wrappers & estimators
 ├── setup.py                # Tool setup: DB init, Ollama rebind
-├── proxy.py                # Optional HTTP proxy for Ollama API
+├── analytics.py            # Plotly graphs for the dashboard
 ├── web.py                  # Flask web server, HTML dashboard
 ├── templates/
 │   └── index.html          # Web UI template
@@ -76,10 +76,6 @@ This will install both the `greenprompt` and `gp` CLI commands.
    - Creates `greenprompt_usage.db`  
    - Rebinds Ollama to port 11435 (via setup instructions)
 
-4. **Start Sampling Daemon** (optionally in a TMUX or background)  
-   ```bash
-   python samplerMac.py
-   ```
 
 ## Usage
 
@@ -103,33 +99,33 @@ gp prompt "Hello, world!" --model llama2
 # Monitor the last 10 prompt usage entries
 greenprompt monitor --count 10
 gp monitor --count 10
+
+# Launch Dashboard
+greenprompt dashboard
+gp dashboard
 ```
 
-### Web Dashboard
+## API Endpoints
 
-1. Open a new terminal window or tab.
+- **POST /api/prompt**  
+  Send a JSON body with `prompt` and optional `model`.  
+  Returns the generated response and all energy/token metrics.
 
-2. Navigate to the frontend directory:
+- **GET /api/usage/all**  
+  Retrieve all prompt usage records as a JSON array.
 
-   ```bash
-   cd ollama-ui
-   ```
-3. Install dependencies (if you haven't already):
-   ```bash
-   npm install
-   ```
-4. Run the frontend development server:
-   ```bash
-   npm run dev
-   ```
-5. The frontend UI will be accessible at:
-   http://127.0.0.1:5000:5713/chat
+- **GET /api/usage/model/<model>**  
+  Retrieve prompt usage records filtered by model.
 
-### API Endpoints
-- `POST /api/generate` → Run a prompt  
-- `GET /api/usage/all` → All records  
-- `GET /api/usage/model/<model>` → Records for a model  
-- `GET /api/usage/timeframe?start=ISO&end=ISO` → Time‑filtered records  
+- **GET /api/usage/timeframe?start=ISO&end=ISO**  
+  Retrieve prompt usage records between `start` and `end` ISO timestamps.
+
+- **GET /dashboard**  
+  Serve the HTML dashboard with embedded Plotly analytics.
+
+- **Proxy all Ollama API calls** via **ANY /ollama/api/<path>**  
+  Forward requests to the local Ollama server (default port 11434), preserving method, headers, query params, and body.
+
 
 ## Limitations
 - **macOS only** (relies on `powermetrics`)  
