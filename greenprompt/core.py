@@ -1,6 +1,5 @@
 import requests
 import time
-import psutil
 import os
 import tiktoken
 from greenprompt import constants

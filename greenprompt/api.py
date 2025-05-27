@@ -53,13 +53,11 @@ def handle_prompt():
         result = run_prompt(prompt, model, monitor=monitor)
     else:
         result = run_prompt(prompt, model, False)
-    logging.info(f"Prompt handled successfully")
     return jsonify(result)
 
 @app.route('/api/usage/all', methods=['GET'])
 def usage_all():
     data = get_prompt_usage()
-    logging.info(f"Fetched all usage data")
     return jsonify(data)
 
 @app.route('/api/usage/model/<model>', methods=['GET'])

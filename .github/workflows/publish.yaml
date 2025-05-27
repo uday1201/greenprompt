@@ -34,6 +34,11 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction --no-ansi
 
+      - name: Lint with Ruff
+        run: |
+          poetry add ruff
+          poetry run ruff check .
+
       - name: Build distributions
         run: poetry build --no-interaction --no-ansi
 

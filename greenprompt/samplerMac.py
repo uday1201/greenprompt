@@ -2,7 +2,6 @@ from collections import deque
 import threading
 import time
 import subprocess
-import re
 from greenprompt.sysUsage import parse_powermetrics_output
 
 class PowerMonitor:

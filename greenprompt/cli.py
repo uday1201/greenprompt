@@ -5,7 +5,6 @@ import shutil
 import sys
 import subprocess
 from greenprompt.dbconn import get_prompt_usage, init_db
-from greenprompt.setup import main as setup_main, monitor
 from greenprompt.core import run_prompt
 from greenprompt.sysUsage import get_system_info
     
@@ -65,6 +64,7 @@ def main():
 
     # setup command
     p_setup = subparsers.add_parser('setup', help='Install and configure Ollama, initialize database, generate constants')
+    p_setup.add_argument('--ollama-port', type=int, default=11434, help='Port for the Ollama server (default: 11434)')
     # run command
     p_run = subparsers.add_parser('run', help='Start the web API server and dashboard')
     p_run.add_argument('--port', type=int, default=5000, help='Port for the web server (default: 5000)')
@@ -77,10 +77,20 @@ def main():
     p_mon.add_argument('--count', type=int, default=10, help='Number of entries to show (default: 10)')
     # log_api command (optional)
     p_log = subparsers.add_parser('log_api', help='Tail the API server logs')
+    p_log.add_argument('--follow', action='store_true', help='Follow the log output (default: False)')
+
+    # stop command
+    p_stop = subparsers.add_parser('stop', help='Stop the API server')
+    p_stop.add_argument('--port', type=int, default=5000,
+                        help='Port where the API server is running (default: 5000)')
 
     args = parser.parse_args()
 
     if args.command == 'setup':
+        # Verify sudo privileges
+        if os.geteuid() != 0:
+            print("Error: 'setup' requires sudo privileges. Please run 'sudo greenprompt setup'")
+            sys.exit(1)
         # 1) check/install Ollama
         if not shutil.which("ollama"):
             print("Installing Ollama via Homebrew...")
@@ -100,6 +110,10 @@ def main():
         print(f"✅ Setup complete: database initialized and constants saved to {constants_path}")
 
     elif args.command == 'run':
+        # Verify sudo privileges
+        if os.geteuid() != 0:
+            print("Error: 'run' requires sudo privileges. Please run 'sudo greenprompt run'")
+            sys.exit(1)
         print(f"Starting API server on port {args.port}...")
         run_api(port=args.port)
 
@@ -147,6 +161,26 @@ def main():
             subprocess.run(["open", "http://localhost:5000/dashboard"], check=True)
         except Exception as e:
             print(f"Error opening dashboard: {e}")
+
+    elif args.command == 'stop':
+        # Verify sudo privileges
+        if os.geteuid() != 0:
+            print("Error: 'stop' requires sudo privileges. Please run 'sudo greenprompt stop'")
+            sys.exit(1)
+        port = args.port
+        print(f"Stopping API server on port {port}...")
+        try:
+            result = subprocess.run(
+                ["lsof", "-i", f":{port}"], capture_output=True, text=True
+            )
+            if result.stdout:
+                pid = result.stdout.splitlines()[1].split()[1]
+                subprocess.run(["kill", "-9", pid], check=True)
+                print(f"Process on port {port} (PID {pid}) has been killed.")
+            else:
+                print(f"No process found listening on port {port}.")
+        except Exception as e:
+            print(f"Error stopping API server on port {port}: {e}")
 
 if __name__ == "__main__":
     main()
