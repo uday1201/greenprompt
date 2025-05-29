@@ -3,10 +3,16 @@ import time
 import os
 import tiktoken
 from greenprompt import constants
-from greenprompt.sysUsage import get_system_info, measure_power_for_pid, has_gpu, get_gpu_usage
+from greenprompt.sysUsage import (
+    get_system_info,
+    measure_power_for_pid,
+    has_gpu,
+    get_gpu_usage,
+)
 from greenprompt.dbconn import save_prompt_usage
 
 OLLAMA_URL = constants.OLLAMA_URL + "/api/generate"
+
 
 def estimate_energy_from_tokens(model, token_count):
     """
@@ -34,6 +40,7 @@ def estimate_energy_from_tokens(model, token_count):
     energy = (token_count / 1000) * multiplier
     return energy
 
+
 def estimate_tokens_from_prompt(prompt, model="gpt-3.5"):
     """
     Estimate how many tokens a prompt would use in a given model.
@@ -55,8 +62,8 @@ def estimate_tokens_from_prompt(prompt, model="gpt-3.5"):
     tokens = enc.encode(prompt)
     return len(tokens)
 
-def run_prompt(prompt, model="llama2", monitor=False):
 
+def run_prompt(prompt, model="llama2", monitor=False):
     # Measure power usage before running the prompt
     current_pid = os.getpid()
     print(f"Current PID: {current_pid}")
@@ -73,11 +80,9 @@ def run_prompt(prompt, model="llama2", monitor=False):
     start_time = time.time()
     end_time = None
     try:
-        response = requests.post(OLLAMA_URL, json={
-            "model": model,
-            "prompt": prompt,
-            "stream": False
-        })
+        response = requests.post(
+            OLLAMA_URL, json={"model": model, "prompt": prompt, "stream": False}
+        )
         end_time = time.time()
         # Measure power usage after running the prompt
         duration = end_time - start_time
@@ -89,7 +94,6 @@ def run_prompt(prompt, model="llama2", monitor=False):
 
     # Measure power usage after running the prompt
     power_usage = measure_power_for_pid(current_pid, start_time, end_time, monitor)
-    print(power_usage)
 
     data = response.json()
     prompt_tokens = data.get("prompt_eval_count", 0)
@@ -132,9 +136,9 @@ def run_prompt(prompt, model="llama2", monitor=False):
         "baseline_energy (Wh)": baseline_energy,
         "baseline_power (W)": baseline_power,
         "gpu_usage": gpu_usage if has_gpu() else "No GPU detected",
-        "system_info": get_system_info()
+        "system_info": get_system_info(),
     }
-    
+
     try:
         save_prompt_usage(response)
     except Exception as e:

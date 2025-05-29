@@ -4,6 +4,7 @@ import time
 import subprocess
 from greenprompt.sysUsage import parse_powermetrics_output
 
+
 class PowerMonitor:
     def __init__(self, sample_interval=1, window_size=600):  # store 10 minutes
         self.samples = deque(maxlen=window_size)
@@ -21,24 +22,35 @@ class PowerMonitor:
     def sample_once(self):
         try:
             out = subprocess.check_output(
-                ["sudo", "powermetrics", "--samplers", "cpu_power", "-n", "1", "-i", "1000"],
-                stderr=subprocess.DEVNULL
+                [
+                    "sudo",
+                    "powermetrics",
+                    "--samplers",
+                    "cpu_power",
+                    "-n",
+                    "1",
+                    "-i",
+                    "1000",
+                ],
+                stderr=subprocess.DEVNULL,
             ).decode()
             parsed = parse_powermetrics_output(out, 1)  # use 1 second sample duration
             return {
                 "combined_power_w": parsed["combined_power_w"],
                 "cpu_power_w": parsed["cpu_power_w"],
-                "gpu_power_w": parsed["gpu_power_w"]
+                "gpu_power_w": parsed["gpu_power_w"],
             }
         except Exception as e:
             print(f"Error sampling power metrics: {e}")
             return None
 
     def start(self):
+        print("Starting power monitor...")
         self.running = True
         self.thread.start()
 
     def stop(self):
+        print("Stopping power monitor...")
         self.running = False
         self.thread.join()
 

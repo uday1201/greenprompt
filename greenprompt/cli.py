@@ -1,23 +1,16 @@
 import argparse
 import os
-from pprint import pprint
-import shutil
+import requests
 import sys
 import subprocess
-import platform
 from greenprompt.dbconn import get_prompt_usage
-from greenprompt.core import run_prompt
-
-if platform.system() == "Darwin":
-    from greenprompt.setup import monitor
+import importlib.util
 
 
 def run_api(port):
     """
     Run the API server on the specified port.
     """
-    print(f"Starting API server on port {port}...")
-
     # Check if the port is in use
     try:
         result = subprocess.run(
@@ -33,33 +26,13 @@ def run_api(port):
         print(f"Error checking or killing process on port {port}: {e}")
 
     # Start the API server
+    api_path = importlib.util.find_spec("greenprompt.api").origin
     subprocess.Popen(
-        ["sudo", "poetry", "run", "python", "api.py", f"--port={port}"],
+        [sys.executable, api_path, f"--port={port}"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
     print(f"API server is running on port {port} in the background.")
-
-
-def display_monitor(start_time=None, end_time=None, model=None):
-    """
-    Display the last 10 usage rows like a monitoring tool.
-    """
-    print("Fetching the last 10 usage rows...")
-    rows = get_prompt_usage(start_time=None, end_time=None, model=None)
-    for row in rows[-10:]:
-        pprint(row)
-
-
-def log_api():
-    """
-    Tail the logs of the API process.
-    """
-    print("Tailing the API logs...")
-    try:
-        subprocess.run(["sudo", "tail", "-f", "api.log"], check=True)
-    except KeyboardInterrupt:
-        print("\nStopped tailing the API logs.")
 
 
 def main():
@@ -106,6 +79,9 @@ def main():
         "--follow", action="store_true", help="Follow the log output (default: False)"
     )
 
+    # dashboard command
+    subparsers.add_parser("dashboard", help="Open the dashboard in your browser")
+
     # stop command
     p_stop = subparsers.add_parser("stop", help="Stop the API server")
     p_stop.add_argument(
@@ -124,10 +100,6 @@ def main():
                 "Error: 'setup' requires sudo privileges. Please run 'sudo greenprompt setup'"
             )
             sys.exit(1)
-        # 1) check/install Ollama
-        if not shutil.which("ollama"):
-            print("Installing Ollama via Homebrew...")
-            subprocess.run(["brew", "install", "ollama"], check=True)
         # Run setup.py file
         from greenprompt.setup import main as setup_main
 
@@ -145,19 +117,28 @@ def main():
         run_api(port=args.port)
 
     elif args.command == "prompt":
-        result = run_prompt(args.prompt, model=args.model, monitor=monitor)
-        print("\nResponse:\n" + result.get("response", ""))
-        print("\n--- Prompt usage data ---")
-        print(f"Prompt tokens: {result.get('prompt_tokens')}")
-        print(f"Completion tokens: {result.get('completion_tokens')}")
-        print(f"Total tokens: {result.get('total_tokens')}")
-        print(f"Duration (sec): {result.get('duration_sec')}")
-        print(f"Baseline power (W): {result.get('baseline_power_w')}")
-        print(f"Baseline energy (Wh): {result.get('baseline_energy_wh')}")
-        print(f"CPU power (W): {result.get('cpu_power_w')}")
-        print(f"GPU power (W): {result.get('gpu_power_w')}")
-        print(f"Combined power (W): {result.get('combined_power_w')}")
-        print(f"Energy used (Wh): {result.get('energy_wh')}")
+        # Make api call to run the prompt
+        print("Running prompt...")
+        url = "http://127.0.0.1:5000/api/prompt"
+        payload = {"prompt": args.prompt, "model": args.model}
+        try:
+            response = requests.post(url, json=payload)
+            data = response.json()
+            print("\nResponse:\n" + data.get("response", ""))
+            print("\n--- Prompt usage data ---")
+            print(f"Prompt tokens: {data.get('prompt_tokens')}")
+            print(f"Completion tokens: {data.get('completion_tokens')}")
+            print(f"Total tokens: {data.get('total_tokens')}")
+            print(f"Duration (sec): {data.get('duration_sec')}")
+            print(f"Baseline power (W): {data.get('baseline_power (W)')}")
+            print(f"Baseline energy (Wh): {data.get('baseline_energy (Wh)')}")
+            print(f"CPU power (W): {data.get('cpu_power_w (W)')}")
+            print(f"GPU power (W): {data.get('gpu_power_w (W)')}")
+            print(f"Combined power (W): {data.get('combined_power_w (W)')}")
+            print(f"Energy used (Wh): {data.get('total_energy (Wh)')}")
+        except Exception as e:
+            print(f"Error connecting to API: {e}")
+            print("Is the API server running? Try 'sudo greenprompt run'.")
 
     elif args.command == "monitor":
         entries = get_prompt_usage(start_time=None, end_time=None, model=None)
@@ -177,7 +158,7 @@ def main():
     elif args.command == "log_api":
         print("Tailing the API logs...")
         try:
-            subprocess.run(["sudo", "tail", "-f", "api.log"], check=True)
+            subprocess.run(["tail", "-f", "/tmp/api.log"], check=True)
         except KeyboardInterrupt:
             print("\nStopped tailing the API logs.")
 

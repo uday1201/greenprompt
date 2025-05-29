@@ -2,19 +2,11 @@ import os
 from greenprompt.sysUsage import get_system_info
 from greenprompt.dbconn import init_db
 import subprocess
-from greenprompt import constants
-from greenprompt.samplerMac import PowerMonitor
 
-# global variable to hold the power monitor instance
-global monitor
 # Ollama URL for local server
 OLLAMA_URL = "http://127.0.0.1:11434"
-
 monitor = None
-if constants.OS == "Darwin":
-    # Initialize the power monitor for macOS
-    monitor = PowerMonitor()
-    monitor.start()
+
 
 def sanitize_key(key):
     """
@@ -22,6 +14,7 @@ def sanitize_key(key):
     Replaces spaces and special characters with underscores.
     """
     return key.upper().replace(" ", "_").replace("(", "").replace(")", "")
+
 
 def check_ollama():
     """
@@ -40,7 +33,9 @@ def check_ollama():
 
     # Check the port Ollama is running on
     try:
-        result = subprocess.run(["lsof", "-i", ":11434"], capture_output=True, text=True)
+        result = subprocess.run(
+            ["lsof", "-i", ":11434"], capture_output=True, text=True
+        )
         if result.returncode == 0:
             print("Ollama is running on port 11434.")
         else:
@@ -48,6 +43,7 @@ def check_ollama():
             subprocess.run(["ollama", "serve"], check=True)
     except Exception as e:
         print(f"Error checking or starting Ollama: {e}")
+
 
 def main():
     print("Setting up GreenPrompt...")
@@ -71,6 +67,7 @@ def main():
 
     # Initialize the database and create tables
     init_db()
+
 
 if __name__ == "__main__":
     main()
