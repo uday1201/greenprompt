@@ -82,7 +82,7 @@ def run_prompt(prompt, model="llama2", monitor=False):
         # Measure power usage after running the prompt
         duration = end_time - start_time
     except requests.exceptions.ConnectionError:
-        raise RuntimeError("❌ Could not connect to Ollama at http://127.0.0.1:5000:11434")
+        raise RuntimeError("❌ Could not connect to Ollama at http://127.0.0.1:11434")
 
     if response.status_code != 200:
         raise RuntimeError(f"❌ Ollama error: {response.status_code} – {response.text}")

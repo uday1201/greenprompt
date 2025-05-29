@@ -4,10 +4,14 @@ from pprint import pprint
 import shutil
 import sys
 import subprocess
+from greenprompt import constants
 from greenprompt.dbconn import get_prompt_usage, init_db
 from greenprompt.core import run_prompt
 from greenprompt.sysUsage import get_system_info
-    
+
+if constants.OS == "Darwin":
+    from greenprompt.setup import monitor
+
 def run_api(port):
     """
     Run the API server on the specified port.
@@ -118,7 +122,7 @@ def main():
         run_api(port=args.port)
 
     elif args.command == 'prompt':
-        result = run_prompt(args.prompt, model=args.model)
+        result = run_prompt(args.prompt, model=args.model, monitor=monitor)
         print("\nResponse:\n" + result.get("response", ""))
         print("\n--- Prompt usage data ---")
         print(f"Prompt tokens: {result.get('prompt_tokens')}")
