@@ -51,6 +51,21 @@ def main():
     # Get system information
     system_info = get_system_info()
 
+    # Run git update-index to hide constants.py
+    try:
+        subprocess.run(
+            [
+                "git",
+                "update-index",
+                "--no-assume-unchanged",
+                "greenprompt/constants.py",
+            ],
+            check=True,
+        )
+        print("Updated git index to track changes to constants.py.")
+    except Exception as e:
+        print(f"Could not update git index: {e}")
+
     # Save system information to constants.py
     constants_py_path = os.path.join(os.getcwd(), "constants.py")
     with open(constants_py_path, "w") as py_file:
