@@ -14,3 +14,5 @@ __pycache__/
 dist/
 # Ignore ipynb files
 *.ipynb
+# Ignore .DS_Store files
+.DS_Store
