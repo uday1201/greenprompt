@@ -3,20 +3,13 @@ name = "greenprompt"
 version = "0.0.1"
 description = "A green prompt tool to estimate energy usage of LLM prompts"
 readme = "README.md"
-authors = [
-  { name="Uday Upreti", email="udapra@gmail.com" },
-]
-readme = "README.md"
-requires-python = ">=3.9,<4.0"
+authors = ["Uday udapra@gmail.com"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: MacOS",
 ]
 license = "MIT"
-license-files = ["LICEN[CS]E*"]
 keywords = ["llm","energy","monitoring","ollama","cli"]
-
-[project.urls]
 homepage = "https://github.com/uday1201/greenprompt"
 repository = "https://github.com/uday1201/greenprompt"
 
@@ -35,6 +28,7 @@ pandas = "^2.2.3"
 statsmodels = "^0.14.4"
 nbformat = "^5.10.4"
 ruff = "^0.11.11"
+pre-commit = "^4.2.0"
 
 [tool.poetry.scripts]
 greenprompt = "greenprompt.cli:main"
