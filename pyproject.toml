@@ -1,9 +1,9 @@
 [tool.poetry]
 name = "greenprompt"
-version = "0.1.0"
+version = "0.1.1"
 description = "A green prompt tool to estimate energy usage of LLM prompts"
 readme = "README.md"
-authors = ["Uday udapra@gmail.com"]
+authors = ["Uday udapra@gmail.com", "Anirudh anirudhpandey244@gmail.com"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: MacOS",
