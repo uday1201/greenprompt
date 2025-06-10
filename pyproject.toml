@@ -29,6 +29,7 @@ statsmodels = "^0.14.4"
 nbformat = "^5.10.4"
 ruff = "^0.11.11"
 pre-commit = "^4.2.0"
+nltk = "^3.9.1"
 
 [tool.poetry.scripts]
 greenprompt = "greenprompt.cli:main"
