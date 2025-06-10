@@ -4,6 +4,7 @@ import requests
 import sys
 import subprocess
 from greenprompt.dbconn import get_prompt_usage
+from greenprompt.scoreBasic import score_prompt
 import importlib.util
 
 
@@ -90,6 +91,12 @@ def main():
         default=5000,
         help="Port where the API server is running (default: 5000)",
     )
+
+    # score command
+    p_score = subparsers.add_parser(
+        "score", help="Score a prompt using the built-in scoring function"
+    )
+    p_score.add_argument("prompt", type=str, help="The prompt text to score")
 
     args = parser.parse_args()
 
@@ -191,6 +198,17 @@ def main():
                 print(f"No process found listening on port {port}.")
         except Exception as e:
             print(f"Error stopping API server on port {port}: {e}")
+    elif args.command == "score":
+        # Takes a prompt as a parameter (string) and returns the score
+        parser = argparse.ArgumentParser()
+        parser.add_argument("prompt", type=str, help="The prompt text to score")
+        parsed_args, _ = parser.parse_known_args(sys.argv[2:])
+        prompt = parsed_args.prompt
+        try:
+            score = score_prompt(prompt)
+            print(f"Score for the prompt: {score}")
+        except Exception as e:
+            print(f"Error scoring prompt: {e}")
 
 
 if __name__ == "__main__":

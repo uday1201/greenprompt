@@ -10,6 +10,7 @@ from greenprompt.sysUsage import (
     get_gpu_usage,
 )
 from greenprompt.dbconn import save_prompt_usage
+from greenprompt.scoreBasic import score_prompt
 
 OLLAMA_URL = constants.OLLAMA_URL + "/api/generate"
 
@@ -121,6 +122,8 @@ def run_prompt(prompt, model="llama2", monitor=False):
 
     response = {
         "prompt": prompt,
+        "prompt_score": score_prompt(prompt).get("score_percent", 0),
+        "prompt_score_details": score_prompt(prompt).get("details", {}),
         "response": data.get("response", ""),
         "model": model,
         "prompt_tokens": prompt_tokens,

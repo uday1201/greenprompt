@@ -2,10 +2,27 @@ import os
 from greenprompt.sysUsage import get_system_info
 from greenprompt.dbconn import init_db
 import subprocess
+import nltk
 
 # Ollama URL for local server
 OLLAMA_URL = "http://127.0.0.1:11434"
 monitor = None
+
+
+def download_nltk_data():
+    resources = [
+        "punkt",
+        "averaged_perceptron_tagger",
+        "wordnet",
+        "stopwords",
+        "punkt_tab",
+        "averaged_perceptron_tagger_eng",
+    ]
+    for resource in resources:
+        try:
+            nltk.download(resource)
+        except Exception as e:
+            print(f"Could not download NLTK resource '{resource}': {e}")
 
 
 def sanitize_key(key):
@@ -76,6 +93,11 @@ def main():
         # Add ollama URL
         py_file.write(f"OLLAMA_URL = {repr(OLLAMA_URL)}\n")
     print(f"✅ System information saved to {constants_py_path}")
+
+    # Download required NLTK data
+    print("Downloading required NLTK data...")
+    download_nltk_data()
+    print("✅ NLTK data downloaded.")
 
     # Check if Ollama is installed
     check_ollama()

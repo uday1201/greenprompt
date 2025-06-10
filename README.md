@@ -1,5 +1,17 @@
 # GreenPrompt 🌱
 
+## ✨ New Feature: Prompt Scoring
+GreenPrompt now includes a **prompt scoring** feature!  
+You can instantly score any prompt using the built-in scoring function from the command line:
+
+```bash
+greenprompt score "your prompt here"
+```
+
+This will output a score for your prompt, helping you evaluate or optimize prompt quality.
+
+---
+
 ## Overview
 GreenPrompt is a local-first tool that tracks and visualizes the real-world energy consumption of AI prompts, locally. It intercepts or wraps LLM calls (via Ollama’s local API), samples CPU/GPU power, logs prompt metadata and energy usage, and provides both CLI and Web UI interfaces for analysis.
 
