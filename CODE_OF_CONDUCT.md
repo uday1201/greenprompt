@@ -21,7 +21,7 @@ Examples of unacceptable behavior:
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported by contacting the project maintainers at uday@example.com.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported by contacting the project maintainers at udapra@gmail.com
 
 All complaints will be reviewed and investigated promptly and fairly.
 
