@@ -1,5 +1,3 @@
-#### `CODE_OF_CONDUCT.md`
-```markdown
 # Contributor Covenant Code of Conduct
 
 ## Our Pledge
