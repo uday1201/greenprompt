@@ -5,7 +5,6 @@ import sys
 import subprocess
 from greenprompt.dbconn import get_prompt_usage
 from greenprompt.scoreBasic import score_prompt
-import importlib.util
 
 
 def run_api(port):
@@ -27,9 +26,8 @@ def run_api(port):
         print(f"Error checking or killing process on port {port}: {e}")
 
     # Start the API server
-    api_path = importlib.util.find_spec("greenprompt.api").origin
     subprocess.Popen(
-        [sys.executable, api_path, f"--port={port}"],
+        [sys.executable, "-m", "greenprompt.api", f"--port={port}"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
