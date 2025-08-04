@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify, Response
-from analytics import (
+from greenprompt.analytics import (
     load_usage_data,
     total_prompts_energy_usage,
     energy_usage_timeline,
