@@ -3,10 +3,19 @@ samplerMac.py — Continuous macOS power sampling via powermetrics.
 
 Provides PowerMonitor, a daemon thread that calls `sudo powermetrics` every
 second and maintains a 10-minute ring buffer of CPU/GPU/combined power
-readings. Requires macOS and root privileges (for powermetrics).
+readings.
 
-This module is macOS-only. For Linux/Windows, see sysUsage.py stubs and
-docs/platform-support.md for the implementation roadmap.
+powermetrics requires root, but the greenprompt process itself does NOT need
+to run as root. Instead, configure passwordless sudo for powermetrics once:
+
+    sudo greenprompt setup
+
+That command writes /etc/sudoers.d/greenprompt so subsequent `sudo powermetrics`
+calls in this module succeed without a password prompt. After setup, all
+greenprompt commands (run, stop, prompt, dashboard) work as a normal user.
+
+This module is macOS-only. For Linux/Windows, see samplerLinux.py and
+docs/platform-support.md.
 """
 
 from collections import deque
@@ -14,6 +23,27 @@ import threading
 import time
 import subprocess
 from greenprompt.sysUsage import parse_powermetrics_output
+
+_SUDOERS_HINT = (
+    "Power sampling requires passwordless sudo for powermetrics.\n"
+    "Run once to configure it:\n"
+    "    sudo greenprompt setup\n"
+    "Until then, energy readings will be zero."
+)
+
+
+def _check_powermetrics_sudo() -> bool:
+    """Return True if `sudo -n powermetrics` succeeds without a password prompt."""
+    try:
+        subprocess.run(
+            ["sudo", "-n", "powermetrics", "--version"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+        return True
+    except Exception:
+        return False
 
 
 class PowerMonitor:
@@ -41,6 +71,7 @@ class PowerMonitor:
         self.running = False
         self.sample_interval = sample_interval
         self.thread = threading.Thread(target=self._run, daemon=True)
+        self._sudo_ok = None  # checked lazily on first start()
 
     def _run(self):
         while self.running:
@@ -86,6 +117,9 @@ class PowerMonitor:
             return None
 
     def start(self):
+        self._sudo_ok = _check_powermetrics_sudo()
+        if not self._sudo_ok:
+            print(f"Warning: {_SUDOERS_HINT}")
         print("Starting power monitor...")
         self.running = True
         self.thread.start()

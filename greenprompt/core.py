@@ -103,10 +103,11 @@ def run_prompt(prompt, model="llama2", monitor=False):
     print(f"Current PID: {current_pid}")
 
     # Check for GPU and its usage
+    gpu_usage = "No GPU detected"
     if has_gpu():
         print("GPU detected.")
         gpu_usage = get_gpu_usage()
-        print("GPU Usage: " + gpu_usage)
+        print("GPU Usage: " + str(gpu_usage))
     else:
         print("No GPU detected.")
 

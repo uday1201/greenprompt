@@ -8,13 +8,18 @@ managed by spawning/killing processes on the configured port.
 
 Subcommands: setup, run, prompt, monitor, score, dashboard, stop, log_api.
 See README.md for full usage examples and flag reference.
+
+Sudo policy: no greenprompt command requires the caller to be root. On macOS,
+powermetrics requires root — samplerMac.py calls `sudo powermetrics`
+internally. Run `sudo greenprompt setup` once to configure passwordless sudo
+for powermetrics; thereafter all commands run as a normal user.
 """
 
 import argparse
-import os
 import requests
 import sys
 import subprocess
+import webbrowser
 from greenprompt.dbconn import get_prompt_usage
 from greenprompt.scoreBasic import score_prompt
 
@@ -29,9 +34,6 @@ def run_api(port):
 
     Args:
         port: Integer port number to bind the Flask server to.
-    """
-    """
-    Run the API server on the specified port.
     """
     # Check if the port is in use
     try:
@@ -59,7 +61,7 @@ def run_api(port):
 def main():
     parser = argparse.ArgumentParser(
         prog="greenprompt",
-        description="GreenPrompt CLI: track energy usage of LLM prompts on macOS",
+        description="GreenPrompt CLI: track energy usage of LLM prompts",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -85,7 +87,10 @@ def main():
     )
     p_prompt.add_argument("prompt", type=str, help="The prompt text to send")
     p_prompt.add_argument(
-        "--model", type=str, default="llama2", help="Model to use (default: llama2)"
+        "--model", type=str, default="llama3.2:latest", help="Model to use (default: llama3.2:latest)"
+    )
+    p_prompt.add_argument(
+        "--port", type=int, default=5000, help="API server port (default: 5000)"
     )
     # monitor command
     p_mon = subparsers.add_parser(
@@ -101,7 +106,10 @@ def main():
     )
 
     # dashboard command
-    subparsers.add_parser("dashboard", help="Open the dashboard in your browser")
+    p_dash = subparsers.add_parser("dashboard", help="Open the dashboard in your browser")
+    p_dash.add_argument(
+        "--port", type=int, default=5000, help="API server port (default: 5000)"
+    )
 
     # stop command
     p_stop = subparsers.add_parser("stop", help="Stop the API server")
@@ -121,36 +129,26 @@ def main():
     args = parser.parse_args()
 
     if args.command == "setup":
-        # Verify sudo privileges
-        if os.geteuid() != 0:
-            print(
-                "Error: 'setup' requires sudo privileges. Please run 'sudo greenprompt setup'"
-            )
-            sys.exit(1)
-        # Run setup.py file
         from greenprompt.setup import main as setup_main
 
         setup_main()
         print("✅ Setup complete: database initialized and constants saved")
 
     elif args.command == "run":
-        # Verify sudo privileges
-        if os.geteuid() != 0:
-            print(
-                "Error: 'run' requires sudo privileges. Please run 'sudo greenprompt run'"
-            )
-            sys.exit(1)
         print(f"Starting API server on port {args.port}...")
         run_api(port=args.port)
 
     elif args.command == "prompt":
         # Make api call to run the prompt
         print("Running prompt...")
-        url = "http://127.0.0.1:5000/api/prompt"
+        url = f"http://127.0.0.1:{args.port}/api/prompt"
         payload = {"prompt": args.prompt, "model": args.model}
         try:
             response = requests.post(url, json=payload)
             data = response.json()
+            if "error" in data:
+                print(f"Error: {data['error']}")
+                sys.exit(1)
             print("\nResponse:\n" + data.get("response", ""))
             print("\n--- Prompt usage data ---")
             print(f"Prompt tokens: {data.get('prompt_tokens')}")
@@ -163,9 +161,13 @@ def main():
             print(f"GPU power (W): {data.get('gpu_power_w (W)')}")
             print(f"Combined power (W): {data.get('combined_power_w (W)')}")
             print(f"Energy used (Wh): {data.get('total_energy (Wh)')}")
+        except requests.exceptions.ConnectionError:
+            print(f"Error: cannot connect to API server on port {args.port}.")
+            print(f"Start it first with: greenprompt run --port {args.port}")
+            sys.exit(1)
         except Exception as e:
-            print(f"Error connecting to API: {e}")
-            print("Is the API server running? Try 'sudo greenprompt run'.")
+            print(f"Error: {e}")
+            sys.exit(1)
 
     elif args.command == "monitor":
         entries = get_prompt_usage(start_time=None, end_time=None, model=None)
@@ -191,19 +193,14 @@ def main():
 
     elif args.command == "dashboard":
         print("Starting the dashboard...")
-        # Open a tab in a web browser at http://localhost:5000/dashboard
+        url = f"http://localhost:{args.port}/dashboard"
         try:
-            subprocess.run(["open", "http://localhost:5000/dashboard"], check=True)
+            webbrowser.open(url)
         except Exception as e:
             print(f"Error opening dashboard: {e}")
+            print(f"Open manually: {url}")
 
     elif args.command == "stop":
-        # Verify sudo privileges
-        if os.geteuid() != 0:
-            print(
-                "Error: 'stop' requires sudo privileges. Please run 'sudo greenprompt stop'"
-            )
-            sys.exit(1)
         port = args.port
         print(f"Stopping API server on port {port}...")
         try:
