@@ -76,7 +76,14 @@ def handle_prompt():
     if not prompt:
         logging.error("Prompt is required but not provided.")
         return jsonify({"error": "Prompt is required"}), 400
-    result = run_prompt(prompt, model, monitor=monitor)
+    try:
+        result = run_prompt(prompt, model, monitor=monitor)
+    except RuntimeError as e:
+        logging.error(f"run_prompt failed: {e}")
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logging.error(f"Unexpected error in run_prompt: {e}")
+        return jsonify({"error": "Internal server error", "detail": str(e)}), 500
     return jsonify(result)
 
 

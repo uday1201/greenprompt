@@ -87,7 +87,7 @@ def main():
     )
     p_prompt.add_argument("prompt", type=str, help="The prompt text to send")
     p_prompt.add_argument(
-        "--model", type=str, default="llama2", help="Model to use (default: llama2)"
+        "--model", type=str, default="llama3.2:latest", help="Model to use (default: llama3.2:latest)"
     )
     p_prompt.add_argument(
         "--port", type=int, default=5000, help="API server port (default: 5000)"
@@ -146,6 +146,9 @@ def main():
         try:
             response = requests.post(url, json=payload)
             data = response.json()
+            if "error" in data:
+                print(f"Error: {data['error']}")
+                sys.exit(1)
             print("\nResponse:\n" + data.get("response", ""))
             print("\n--- Prompt usage data ---")
             print(f"Prompt tokens: {data.get('prompt_tokens')}")
@@ -158,9 +161,13 @@ def main():
             print(f"GPU power (W): {data.get('gpu_power_w (W)')}")
             print(f"Combined power (W): {data.get('combined_power_w (W)')}")
             print(f"Energy used (Wh): {data.get('total_energy (Wh)')}")
+        except requests.exceptions.ConnectionError:
+            print(f"Error: cannot connect to API server on port {args.port}.")
+            print(f"Start it first with: greenprompt run --port {args.port}")
+            sys.exit(1)
         except Exception as e:
-            print(f"Error connecting to API: {e}")
-            print("Is the API server running? Try 'greenprompt run'.")
+            print(f"Error: {e}")
+            sys.exit(1)
 
     elif args.command == "monitor":
         entries = get_prompt_usage(start_time=None, end_time=None, model=None)
