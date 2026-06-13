@@ -69,9 +69,9 @@ logging.getLogger().addHandler(console_handler)
 @app.route("/api/prompt", methods=["POST"])
 def handle_prompt():
     """Run a prompt through core.run_prompt() and return energy/token metrics."""
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     prompt = data.get("prompt", "")
-    model = data.get("model", "llama2")
+    model = data.get("model", "llama3.2:latest")
     logging.info(f"Received prompt: {prompt} for model: {model}")
     if not prompt:
         logging.error("Prompt is required but not provided.")
