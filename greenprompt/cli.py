@@ -8,13 +8,18 @@ managed by spawning/killing processes on the configured port.
 
 Subcommands: setup, run, prompt, monitor, score, dashboard, stop, log_api.
 See README.md for full usage examples and flag reference.
+
+Sudo policy: no greenprompt command requires the caller to be root. On macOS,
+powermetrics requires root — samplerMac.py calls `sudo powermetrics`
+internally. Run `sudo greenprompt setup` once to configure passwordless sudo
+for powermetrics; thereafter all commands run as a normal user.
 """
 
 import argparse
-import os
 import requests
 import sys
 import subprocess
+import webbrowser
 from greenprompt.dbconn import get_prompt_usage
 from greenprompt.scoreBasic import score_prompt
 
@@ -29,9 +34,6 @@ def run_api(port):
 
     Args:
         port: Integer port number to bind the Flask server to.
-    """
-    """
-    Run the API server on the specified port.
     """
     # Check if the port is in use
     try:
@@ -59,7 +61,7 @@ def run_api(port):
 def main():
     parser = argparse.ArgumentParser(
         prog="greenprompt",
-        description="GreenPrompt CLI: track energy usage of LLM prompts on macOS",
+        description="GreenPrompt CLI: track energy usage of LLM prompts",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -121,26 +123,12 @@ def main():
     args = parser.parse_args()
 
     if args.command == "setup":
-        # sudo only needed on macOS (powermetrics requires root)
-        from greenprompt import constants as _c
-        if _c.OS == "Darwin" and os.geteuid() != 0:
-            print(
-                "Error: 'setup' requires sudo privileges on macOS. Please run 'sudo greenprompt setup'"
-            )
-            sys.exit(1)
-        # Run setup.py file
         from greenprompt.setup import main as setup_main
 
         setup_main()
         print("✅ Setup complete: database initialized and constants saved")
 
     elif args.command == "run":
-        from greenprompt import constants as _c
-        if _c.OS == "Darwin" and os.geteuid() != 0:
-            print(
-                "Error: 'run' requires sudo privileges on macOS. Please run 'sudo greenprompt run'"
-            )
-            sys.exit(1)
         print(f"Starting API server on port {args.port}...")
         run_api(port=args.port)
 
@@ -166,7 +154,7 @@ def main():
             print(f"Energy used (Wh): {data.get('total_energy (Wh)')}")
         except Exception as e:
             print(f"Error connecting to API: {e}")
-            print("Is the API server running? Try 'sudo greenprompt run'.")
+            print("Is the API server running? Try 'greenprompt run'.")
 
     elif args.command == "monitor":
         entries = get_prompt_usage(start_time=None, end_time=None, model=None)
@@ -192,19 +180,14 @@ def main():
 
     elif args.command == "dashboard":
         print("Starting the dashboard...")
-        # Open a tab in a web browser at http://localhost:5000/dashboard
+        url = "http://localhost:5000/dashboard"
         try:
-            subprocess.run(["open", "http://localhost:5000/dashboard"], check=True)
+            webbrowser.open(url)
         except Exception as e:
             print(f"Error opening dashboard: {e}")
+            print(f"Open manually: {url}")
 
     elif args.command == "stop":
-        from greenprompt import constants as _c
-        if _c.OS == "Darwin" and os.geteuid() != 0:
-            print(
-                "Error: 'stop' requires sudo privileges on macOS. Please run 'sudo greenprompt stop'"
-            )
-            sys.exit(1)
         port = args.port
         print(f"Stopping API server on port {port}...")
         try:

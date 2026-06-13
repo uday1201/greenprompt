@@ -1,4 +1,5 @@
 import os
+import platform
 from greenprompt.sysUsage import get_system_info
 from greenprompt.dbconn import init_db
 import subprocess
@@ -71,6 +72,47 @@ def detect_cpu_tdp_w() -> float:
     return 40.0  # default for Cortex-X925
 
 
+def configure_powermetrics_sudoers():
+    """
+    Write /etc/sudoers.d/greenprompt to allow passwordless powermetrics.
+
+    Only runs on macOS. Requires the current process to be root (i.e. the user
+    ran `sudo greenprompt setup`). If this succeeds, subsequent `greenprompt run`
+    calls work without sudo because samplerMac.py calls `sudo powermetrics`
+    internally and the sudoers rule removes the password prompt.
+
+    Prints instructions and returns False if the write fails (e.g. not root).
+    """
+    if platform.system() != "Darwin":
+        return True
+
+    powermetrics_path = "/usr/bin/powermetrics"
+    sudoers_file = "/etc/sudoers.d/greenprompt"
+    try:
+        import pwd
+        # Identify the real (non-root) user: SUDO_USER env var set by sudo
+        real_user = os.environ.get("SUDO_USER") or pwd.getpwuid(os.getuid()).pw_name
+        rule = f"{real_user} ALL=(ALL) NOPASSWD: {powermetrics_path}\n"
+        with open(sudoers_file, "w") as f:
+            f.write(rule)
+        # sudoers.d files must be mode 0440
+        os.chmod(sudoers_file, 0o440)
+        print(f"✅ Configured passwordless sudo for powermetrics ({sudoers_file})")
+        print("   You can now run 'greenprompt run' without sudo.")
+        return True
+    except PermissionError:
+        print(
+            "ℹ️  Skipping powermetrics sudo configuration (not running as root).\n"
+            "   For accurate power tracking on macOS, run setup once with sudo:\n"
+            "       sudo greenprompt setup\n"
+            "   After that, 'greenprompt run' works without sudo."
+        )
+        return False
+    except Exception as e:
+        print(f"Warning: could not configure sudoers for powermetrics: {e}")
+        return False
+
+
 def check_ollama():
     """
     Check if Ollama is installed. If not, install it and return the port.
@@ -135,6 +177,10 @@ def main():
         # Adjust this value to match your hardware if you know the actual TDP.
         py_file.write(f"CPU_TDP_W = {cpu_tdp_w}\n")
     print(f"✅ System information saved to {constants_py_path} (CPU_TDP_W={cpu_tdp_w}W)")
+
+    # On macOS, configure passwordless sudo for powermetrics so `greenprompt run`
+    # works without sudo after this one-time setup.
+    configure_powermetrics_sudoers()
 
     # Download required NLTK data
     print("Downloading required NLTK data...")
