@@ -11,43 +11,19 @@ Covers:
     start==end, no baseline, short-prompt interpolation threshold)
   - _parse_nvidia_power (all N/A variants, non-numeric, negative, large values)
   - API: empty prompt, missing JSON body, timeframe missing params
+
+Shared helpers live in tests/common/helpers.py. Add new Linux-specific
+test modules alongside this file as coverage grows.
 """
 
 import threading
 import time
 import unittest
-from collections import deque
 from unittest.mock import MagicMock, patch, mock_open
 
-
-# ---------------------------------------------------------------------------
-# Helpers / lightweight fakes
-# ---------------------------------------------------------------------------
-
-def _make_monitor(samples=None, sample_interval=1):
-    """Return a minimal LinuxPowerMonitor-like object without starting a thread."""
-    from greenprompt.samplerLinux import LinuxPowerMonitor
-    with patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None), \
-         patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}), \
-         patch("psutil.cpu_percent", return_value=[10.0] * 20):
-        m = LinuxPowerMonitor.__new__(LinuxPowerMonitor)
-        m.samples = deque(maxlen=600)
-        m.running = False
-        m.sample_interval = sample_interval
-        m.cpu_tdp_w = 23.0
-        m._lock = threading.Lock()
-        m._stop_event = threading.Event()
-        m._cpu_mode = "linear_tdp"
-        m._gpu_available = None
-        m._gpu_unavailable_warned = False
-        m._dmon = None
-        if samples:
-            m.samples.extend(samples)
-        return m
-
-
-def _sample(cpu=5.0, gpu=3.0):
-    return {"cpu_power_w": cpu, "gpu_power_w": gpu, "combined_power_w": cpu + gpu}
+from tests.common.helpers import make_monitor as _make_monitor
+from tests.common.helpers import sample_dict as _sample
+from tests.common.helpers import cpu_pct_side_effect
 
 
 # ===========================================================================
@@ -459,7 +435,7 @@ class TestMonitorLifecycle(unittest.TestCase):
         from greenprompt.samplerLinux import LinuxPowerMonitor
         with patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None), \
              patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}), \
-             patch("psutil.cpu_percent", return_value=[10.0] * 4):
+             patch("psutil.cpu_percent", side_effect=cpu_pct_side_effect):
             m = LinuxPowerMonitor()
         return m
 
@@ -836,16 +812,14 @@ class TestHighFrequencySampling(unittest.TestCase):
 
     def test_1000_sample_once_calls_no_crash(self):
         from greenprompt.samplerLinux import LinuxPowerMonitor
-        def _cpu_pct(*args, **kwargs):
-            return [15.0] * 4 if kwargs.get("percpu") else 15.0
         with patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None), \
              patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}), \
-             patch("psutil.cpu_percent", side_effect=_cpu_pct):
+             patch("psutil.cpu_percent", side_effect=cpu_pct_side_effect):
             m = LinuxPowerMonitor()
         m._dmon = None
         errors = []
         with patch.object(m, "_check_gpu", return_value=False), \
-             patch("psutil.cpu_percent", side_effect=_cpu_pct):
+             patch("psutil.cpu_percent", side_effect=cpu_pct_side_effect):
             for _ in range(1000):
                 try:
                     result = m.sample_once()
@@ -859,7 +833,7 @@ class TestHighFrequencySampling(unittest.TestCase):
         from greenprompt.samplerLinux import LinuxPowerMonitor
         with patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None), \
              patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}), \
-             patch("psutil.cpu_percent", return_value=[15.0] * 4):
+             patch("psutil.cpu_percent", side_effect=cpu_pct_side_effect):
             m = LinuxPowerMonitor()
         m._dmon = None
         errors = []
@@ -868,7 +842,7 @@ class TestHighFrequencySampling(unittest.TestCase):
         def sampler():
             while not stop.is_set():
                 with patch.object(m, "_check_gpu", return_value=False), \
-                     patch("psutil.cpu_percent", return_value=[15.0] * 4):
+                     patch("psutil.cpu_percent", side_effect=cpu_pct_side_effect):
                     s = m.sample_once()
                 if s:
                     with m._lock:
