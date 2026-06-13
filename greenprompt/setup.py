@@ -1,3 +1,4 @@
+import glob
 import os
 import platform
 from greenprompt.sysUsage import get_system_info
@@ -49,7 +50,8 @@ def detect_cpu_tdp_w() -> float:
         brand = cpuinfo.get_cpu_info().get("brand_raw", "").lower()
         # Known TDP estimates by CPU family
         tdp_map = [
-            ("cortex-x925", 40.0),
+            ("cortex-x925", 23.0),   # 10-core P-cluster (NVIDIA Grace / Snapdragon X Elite)
+            ("cortex-a725",  8.0),   # 10-core E-cluster
             ("cortex-x4",   30.0),
             ("cortex-x3",   25.0),
             ("cortex-x2",   20.0),
@@ -166,6 +168,15 @@ def main():
     # Save system information to constants.py
     constants_py_path = os.path.join(os.getcwd(), "constants.py")
     cpu_tdp_w = detect_cpu_tdp_w()
+
+    # Detect CPU power measurement source for informational display
+    cpu_power_source = "estimated"
+    if platform.system() == "Linux":
+        rapl_files = glob.glob("/sys/class/powercap/intel-rapl*/intel-rapl*:0/energy_uj")
+        direct_rapl = "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj"
+        if rapl_files or os.path.exists(direct_rapl):
+            cpu_power_source = "rapl"
+
     with open(constants_py_path, "w") as py_file:
         py_file.write("# Auto-generated constants file\n")
         for key, value in system_info.items():
@@ -173,10 +184,12 @@ def main():
             py_file.write(f"{sanitized_key} = {repr(value)}\n")
         # Add ollama URL
         py_file.write(f"OLLAMA_URL = {repr(OLLAMA_URL)}\n")
-        # CPU TDP estimate used by LinuxPowerMonitor for CPU energy estimation.
-        # Adjust this value to match your hardware if you know the actual TDP.
+        # CPU TDP estimate used by LinuxPowerMonitor in linear_tdp fallback mode.
+        # In arm_biglittle or rapl mode this value is not used for sampling.
         py_file.write(f"CPU_TDP_W = {cpu_tdp_w}\n")
-    print(f"✅ System information saved to {constants_py_path} (CPU_TDP_W={cpu_tdp_w}W)")
+        # Informational: 'rapl' (Intel/AMD direct measurement) or 'estimated' (ARM/other)
+        py_file.write(f"CPU_POWER_SOURCE = {repr(cpu_power_source)}\n")
+    print(f"✅ System information saved to {constants_py_path} (CPU_TDP_W={cpu_tdp_w}W, CPU_POWER_SOURCE={cpu_power_source!r})")
 
     # On macOS, configure passwordless sudo for powermetrics so `greenprompt run`
     # works without sudo after this one-time setup.

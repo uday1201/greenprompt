@@ -5,13 +5,11 @@ Provides:
 - get_system_info(): CPU, RAM, disk, OS metadata as a dict.
 - measure_power_for_pid(): Dispatches to the correct OS-specific power function.
 - measure_power_mac(): Reads from a PowerMonitor sample buffer (macOS only).
-- measure_power_linux(): Placeholder — not yet implemented.
+- measure_power_linux(): Reads from a LinuxPowerMonitor sample buffer (Linux only).
 - measure_power_windows(): Placeholder — not yet implemented.
 - has_gpu(): Detects GPU presence on all platforms.
 - get_gpu_usage(): Returns GPU utilization stats (Linux/Windows via nvidia-smi).
 - parse_powermetrics_output(): Parses raw macOS powermetrics text output.
-
-For Linux/Windows implementation roadmap, see docs/platform-support.md.
 """
 
 import platform
@@ -93,19 +91,24 @@ def measure_power_linux(start_time: float, end_time: float, monitor=None) -> dic
     """
     Compute power and energy metrics for a Linux prompt run from LinuxPowerMonitor samples.
 
-    Mirrors measure_power_mac() exactly — reads (timestamp, sample_dict) tuples
-    from monitor.samples and averages the window matching [start_time, end_time].
-    Uses the 60 seconds before start_time as the idle baseline.
+    Takes a single thread-safe snapshot of monitor.samples, then filters for the
+    prompt window [start_time, end_time] and a 60-second idle baseline before it.
+
+    Short-prompt interpolation: if the prompt duration is shorter than the sampler
+    interval (typically 1s), the window may contain zero samples. In that case,
+    up to two neighboring samples (one before, one after the window, within
+    2 × sample_interval seconds) are used as a proxy. The result includes
+    "extrapolated": True when this path is taken.
 
     Args:
         start_time: Unix timestamp when the prompt started.
         end_time: Unix timestamp when the prompt ended.
-        monitor: LinuxPowerMonitor instance with a populated samples deque,
-            or None to return zero values with a warning.
+        monitor: LinuxPowerMonitor instance, or None to return zeros with a warning.
 
     Returns:
-        dict with keys: cpu_power_w, gpu_power_w, combined_power_w,
-        duration_sec, energy_wh, baseline_power_w, baseline_energy_wh.
+        dict with keys: cpu_power_w, gpu_power_w, combined_power_w, duration_sec,
+        energy_wh, baseline_power_w, baseline_energy_wh.
+        Optional key: extrapolated (True if neighboring samples were used).
     """
     duration = end_time - start_time
 
@@ -123,41 +126,64 @@ def measure_power_linux(start_time: float, end_time: float, monitor=None) -> dic
         print("Warning: LinuxPowerMonitor not running — energy_wh will be 0. Start with 'greenprompt run'.")
         return _zero
 
+    # Single thread-safe snapshot — avoids two separate deque iterations that
+    # could be inconsistent if the sampler appends between them.
+    if hasattr(monitor, "_lock"):
+        with monitor._lock:
+            all_samples = list(monitor.samples)
+    else:
+        all_samples = list(getattr(monitor, "samples", []))
+
     baseline_start = start_time - 60
-    baseline_samples = [
-        s for ts, s in getattr(monitor, "samples", [])
-        if baseline_start <= ts <= start_time
-    ]
-    prompt_samples = [
-        s for ts, s in getattr(monitor, "samples", [])
-        if start_time <= ts <= end_time
-    ]
+    baseline_samples = [s for ts, s in all_samples if baseline_start <= ts <= start_time]
+    prompt_samples = [s for ts, s in all_samples if start_time <= ts <= end_time]
 
+    # Short-prompt interpolation: find nearest neighbors when window is empty
+    extrapolated = False
     if not prompt_samples:
-        print("Warning: No power samples in prompt window — monitor may need more warm-up time.")
-        return _zero
+        sample_interval = getattr(monitor, "sample_interval", 1)
+        threshold = 2 * sample_interval
 
-    avg_cpu = sum(s.get("cpu_power_w", 0.0) for s in prompt_samples) / len(prompt_samples)
-    avg_gpu = sum(s.get("gpu_power_w", 0.0) for s in prompt_samples) / len(prompt_samples)
+        before = [(ts, s) for ts, s in all_samples if ts < start_time]
+        after  = [(ts, s) for ts, s in all_samples if ts > end_time]
+
+        neighbors = []
+        if before and (start_time - before[-1][0]) <= threshold:
+            neighbors.append(before[-1][1])
+        if after and (after[0][0] - end_time) <= threshold:
+            neighbors.append(after[0][1])
+
+        if neighbors:
+            prompt_samples = neighbors
+            extrapolated = True
+        else:
+            print("Warning: No power samples in prompt window — monitor may need more warm-up time.")
+            return _zero
+
+    avg_cpu      = sum(s.get("cpu_power_w", 0.0)      for s in prompt_samples) / len(prompt_samples)
+    avg_gpu      = sum(s.get("gpu_power_w", 0.0)      for s in prompt_samples) / len(prompt_samples)
     avg_combined = sum(s.get("combined_power_w", 0.0) for s in prompt_samples) / len(prompt_samples)
-    energy_wh = (avg_combined * duration) / 3600.0
+    energy_wh    = (avg_combined * duration) / 3600.0
 
     if baseline_samples:
-        baseline_avg = sum(s.get("combined_power_w", 0.0) for s in baseline_samples) / len(baseline_samples)
+        baseline_avg       = sum(s.get("combined_power_w", 0.0) for s in baseline_samples) / len(baseline_samples)
         baseline_energy_wh = (baseline_avg * 60.0) / 3600.0
     else:
-        baseline_avg = 0.0
+        baseline_avg       = 0.0
         baseline_energy_wh = 0.0
 
-    return {
-        "cpu_power_w": avg_cpu,
-        "gpu_power_w": avg_gpu,
-        "combined_power_w": avg_combined,
-        "duration_sec": duration,
-        "energy_wh": energy_wh,
-        "baseline_power_w": baseline_avg,
+    result = {
+        "cpu_power_w":        avg_cpu,
+        "gpu_power_w":        avg_gpu,
+        "combined_power_w":   avg_combined,
+        "duration_sec":       duration,
+        "energy_wh":          energy_wh,
+        "baseline_power_w":   baseline_avg,
         "baseline_energy_wh": baseline_energy_wh,
     }
+    if extrapolated:
+        result["extrapolated"] = True
+    return result
 
 def measure_power_windows(pid, start_time, end_time):  # noqa: ARG001
     """
