@@ -1,3 +1,22 @@
+"""
+scoreBasic.py — Offline prompt quality scorer using NLTK and regex.
+
+Implements score_prompt(), which evaluates a prompt on 18 dimensions derived
+from the RTCF framework (Role, Task, Context, Format) and established prompt
+engineering best practices. The scorer requires no network access and no LLM
+call — it runs entirely on NLTK POS tagging and pattern matching.
+
+Maximum total score: 50 points. Score% = (total / 50) * 100.
+
+Dimensions: RTCF Structure, Clarity & Specificity, Conciseness, Contextual
+Priming, Output Specification, Instructional Tone, Examples & Few-Shot, Task
+Decomposition, Positive/Negative Examples, Iterative Refinement, Creativity
+Control, Tone & Style, Error Prevention, Evaluation & Validation, Sensitivity
+& Inclusivity, Efficiency & Sustainability, Energy Awareness, Keyword Richness.
+
+See docs/prompt-scoring.md for a full reference with examples.
+"""
+
 import re
 import nltk
 from nltk.corpus import stopwords
@@ -164,6 +183,22 @@ def energy_awareness(text):
 
 
 def score_prompt(prompt):
+    """
+    Score a prompt on 18 quality dimensions.
+
+    Evaluates the prompt using regex patterns and NLTK POS tagging. All
+    processing is local — no API calls are made.
+
+    Args:
+        prompt: The raw prompt string to evaluate.
+
+    Returns:
+        dict with keys:
+            total_score (int): Sum of all dimension scores.
+            max_score (int): Maximum possible score (50).
+            score_percent (float): total_score / max_score * 100.
+            details (dict): Per-dimension scores keyed by dimension name.
+    """
     prompt_norm = normalize(prompt)
     score_details = {}
 

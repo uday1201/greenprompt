@@ -1,3 +1,17 @@
+"""
+dbconn.py — SQLite persistence layer for GreenPrompt.
+
+Manages the prompt_usage table: schema creation, inserting prompt run records,
+and querying with optional filters. The database file is created in the
+current working directory at the time of the first init_db() or save call.
+
+DB_PATH: os.path.join(os.getcwd(), "greenprompt_usage.db")
+
+All timestamps are stored as UTC ISO 8601 strings. JSON blobs (system_info,
+prompt_score_details) are serialized with json.dumps and must be parsed by
+callers with json.loads.
+"""
+
 import sqlite3
 import os
 import json
@@ -94,6 +108,19 @@ def save_prompt_usage(data: dict):
 
 
 def get_prompt_usage(start_time=None, end_time=None, model=None):
+    """
+    Retrieve prompt_usage records with optional filters.
+
+    Args:
+        start_time: ISO 8601 string; only rows with timestamp >= this value.
+        end_time: ISO 8601 string; only rows with timestamp <= this value.
+        model: Exact model name string to filter on (case-sensitive).
+
+    Returns:
+        List of dicts, one per row, ordered by timestamp ASC. Each dict has
+        all prompt_usage columns. system_info and prompt_score_details are
+        JSON strings; callers must parse with json.loads if needed.
+    """
     """
     Retrieve prompt_usage entries filtered by optional ISO timestamp range and model.
     """

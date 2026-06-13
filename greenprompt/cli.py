@@ -1,3 +1,15 @@
+"""
+cli.py — GreenPrompt command-line interface.
+
+Entry point for the `greenprompt`, `gprompt`, and `greenp` commands. Parses
+subcommands and delegates to either the running API server (for prompt/monitor)
+or directly to module functions (for score). Server lifecycle (run/stop) is
+managed by spawning/killing processes on the configured port.
+
+Subcommands: setup, run, prompt, monitor, score, dashboard, stop, log_api.
+See README.md for full usage examples and flag reference.
+"""
+
 import argparse
 import os
 import requests
@@ -8,6 +20,16 @@ from greenprompt.scoreBasic import score_prompt
 
 
 def run_api(port):
+    """
+    Start the GreenPrompt Flask API server as a background subprocess.
+
+    If a process is already listening on `port`, kills it first. Launches
+    `python -m greenprompt.api --port=<port>` via subprocess.Popen with
+    stdout/stderr suppressed.
+
+    Args:
+        port: Integer port number to bind the Flask server to.
+    """
     """
     Run the API server on the specified port.
     """
