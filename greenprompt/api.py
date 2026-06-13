@@ -1,3 +1,24 @@
+"""
+api.py — GreenPrompt Flask API server.
+
+Started as a background subprocess by `greenprompt run`. Owns the PowerMonitor
+lifecycle on macOS. Exposes REST endpoints for prompt execution, usage queries,
+and the analytics dashboard. Also provides a reverse proxy to the local Ollama
+server.
+
+Endpoints:
+    POST /api/prompt          — run a prompt, measure energy, save to DB
+    GET  /api/usage/all       — retrieve all usage records
+    GET  /api/usage/model/<m> — filter usage by model
+    GET  /api/usage/timeframe — filter usage by timestamp range
+    GET  /dashboard           — serve the Plotly analytics dashboard
+    ANY  /ollama/api/<path>   — transparent proxy to Ollama at :11434
+
+Known issues:
+    - Line 2 import should be `from greenprompt.analytics import ...`
+    - Ollama proxy URL uses /ollama/api/ but Ollama base is /api/
+"""
+
 from flask import Flask, render_template, request, jsonify, Response
 from analytics import (
     load_usage_data,
@@ -48,6 +69,7 @@ logging.getLogger().addHandler(console_handler)
 
 @app.route("/api/prompt", methods=["POST"])
 def handle_prompt():
+    """Run a prompt through core.run_prompt() and return energy/token metrics."""
     data = request.get_json()
     prompt = data.get("prompt", "")
     model = data.get("model", "llama2")
@@ -61,18 +83,21 @@ def handle_prompt():
 
 @app.route("/api/usage/all", methods=["GET"])
 def usage_all():
+    """Return all prompt_usage records as a JSON array."""
     data = get_prompt_usage()
     return jsonify(data)
 
 
 @app.route("/api/usage/model/<model>", methods=["GET"])
 def usage_by_model(model):
+    """Return usage records filtered by exact model name."""
     data = get_prompt_usage(model=model)
     return jsonify(data)
 
 
 @app.route("/api/usage/timeframe", methods=["GET"])
 def usage_by_timeframe():
+    """Return usage records within a start/end ISO timestamp range (query params)."""
     start = request.args.get("start")
     end = request.args.get("end")
     if not start or not end:
@@ -83,6 +108,7 @@ def usage_by_timeframe():
 
 @app.route("/dashboard")
 def dashboard():
+    """Render the Plotly analytics dashboard as an HTML page."""
     df = load_usage_data()
 
     print(f"Loaded {len(df)} records from the database")
@@ -124,7 +150,10 @@ def dashboard():
 )
 def ollama_proxy(subpath):
     """
-    Proxy any Ollama API request (under /ollama/api/) to the local Ollama server.
+    Proxy any Ollama API request to the local Ollama server at :11434.
+
+    Note: the target URL path is currently /ollama/api/<subpath> which is
+    incorrect — Ollama's base path is /api/<subpath>. This is a known bug.
     """
     # Construct the target URL on the Ollama server (default port 11434)
     target_url = f"http://localhost:11434/ollama/api/{subpath}"

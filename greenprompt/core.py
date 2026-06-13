@@ -1,3 +1,12 @@
+"""
+core.py — Prompt execution and energy calculation.
+
+Orchestrates the full lifecycle of a single LLM prompt: power baseline
+capture, Ollama HTTP call, post-call power measurement, prompt scoring,
+and database persistence. This module is the primary integration point
+between all other GreenPrompt subsystems.
+"""
+
 import requests
 import time
 import os
@@ -65,6 +74,30 @@ def estimate_tokens_from_prompt(prompt, model="gpt-3.5"):
 
 
 def run_prompt(prompt, model="llama2", monitor=False):
+    """
+    Execute a prompt through Ollama and measure its energy consumption.
+
+    Sends the prompt to the local Ollama server, samples CPU/GPU power via
+    the provided PowerMonitor (macOS) or falls back to zero values, scores
+    the prompt with scoreBasic, and saves everything to SQLite.
+
+    Args:
+        prompt: The user's input text.
+        model: Ollama model name (default "llama2"). Must be installed locally.
+        monitor: A PowerMonitor instance (samplerMac.PowerMonitor) with an
+            active sample buffer, or False/None to skip hardware measurement.
+
+    Returns:
+        dict with keys: prompt, prompt_score, prompt_score_details, response,
+        model, prompt_tokens, completion_tokens, total_tokens,
+        "total_energy (Wh)", duration_sec, "combined_power_w (W)",
+        "cpu_power_w (W)", "gpu_power_w (W)", energy_estimate_tokens,
+        energy_estimate_prompt, "baseline_energy (Wh)", "baseline_power (W)",
+        gpu_usage, system_info.
+
+    Raises:
+        RuntimeError: If Ollama is unreachable or returns a non-200 response.
+    """
     # Measure power usage before running the prompt
     current_pid = os.getpid()
     print(f"Current PID: {current_pid}")

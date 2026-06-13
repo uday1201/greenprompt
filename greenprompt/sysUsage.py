@@ -1,3 +1,19 @@
+"""
+sysUsage.py — OS-agnostic system information and power measurement dispatch.
+
+Provides:
+- get_system_info(): CPU, RAM, disk, OS metadata as a dict.
+- measure_power_for_pid(): Dispatches to the correct OS-specific power function.
+- measure_power_mac(): Reads from a PowerMonitor sample buffer (macOS only).
+- measure_power_linux(): Placeholder — not yet implemented.
+- measure_power_windows(): Placeholder — not yet implemented.
+- has_gpu(): Detects GPU presence on all platforms.
+- get_gpu_usage(): Returns GPU utilization stats (Linux/Windows via nvidia-smi).
+- parse_powermetrics_output(): Parses raw macOS powermetrics text output.
+
+For Linux/Windows implementation roadmap, see docs/platform-support.md.
+"""
+
 import platform
 import psutil
 import socket
@@ -9,6 +25,14 @@ import re
 from greenprompt import constants
 
 def get_system_info():
+    """
+    Collect static system hardware and OS metadata.
+
+    Returns:
+        dict with keys: OS, OS Version, Platform, Machine, Processor, CPU,
+        CPU Cores (Physical), CPU Cores (Total), CPU Frequency (Current/Min/Max),
+        RAM (Total), Disk (Total/Used/Free), Hostname, IP Address.
+    """
     info = {
         "OS": platform.system(),
         "OS Version": platform.version(),
@@ -92,6 +116,23 @@ def measure_power_windows(pid, start_time, end_time):
         return f"Error collecting power metrics on Windows: {e}"
 
 def measure_power_for_pid(pid, start_time, end_time, monitor=None):
+    """
+    Dispatch power measurement to the appropriate OS-specific function.
+
+    On macOS, reads from the provided PowerMonitor sample buffer.
+    On Linux and Windows, returns a placeholder string (not yet implemented).
+
+    Args:
+        pid: Process ID (used on Linux/Windows for future per-process sampling).
+        start_time: Unix timestamp when the workload started.
+        end_time: Unix timestamp when the workload ended.
+        monitor: PowerMonitor instance (required on macOS; ignored on others).
+
+    Returns:
+        On macOS: dict with cpu_power_w, gpu_power_w, combined_power_w,
+            duration_sec, energy_wh, baseline_power_w, baseline_energy_wh.
+        On Linux/Windows: str explaining the limitation.
+    """
     os_type = constants.OS
     if os_type == "Darwin":
         return measure_power_mac(start_time, end_time, monitor)
@@ -105,6 +146,15 @@ def measure_power_for_pid(pid, start_time, end_time, monitor=None):
         return "Unsupported OS for power measurement."
     
 def has_gpu():
+    """
+    Detect whether a GPU is present on the current machine.
+
+    macOS: checks system_profiler SPDisplaysDataType for a Chipset Model entry.
+    Linux/Windows: runs nvidia-smi -L and checks for non-empty output.
+
+    Returns:
+        True if a GPU is detected, False otherwise or on error.
+    """
     os_type = constants.OS
     try:
         if os_type == "Darwin":
@@ -124,6 +174,16 @@ def has_gpu():
         return False
     
 def get_gpu_usage():
+    """
+    Return current GPU utilization statistics.
+
+    Linux/Windows: queries nvidia-smi for utilization %, memory used, total.
+    macOS: returns a not-supported message (powermetrics handles GPU on macOS).
+
+    Returns:
+        str — CSV-formatted nvidia-smi output on Linux/Windows, or an
+        explanatory string on macOS or on error.
+    """
     os_type = constants.OS
     try:
         if os_type == "Darwin":

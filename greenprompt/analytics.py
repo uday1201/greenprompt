@@ -1,3 +1,20 @@
+"""
+analytics.py — Plotly chart generation for the GreenPrompt dashboard.
+
+Each function accepts a pandas DataFrame (from load_usage_data()) and returns
+a Plotly Figure object. These figures are serialized to JSON by api.py and
+rendered client-side by dashboard.html using Plotly.js.
+
+Functions:
+    load_usage_data() — load all prompt_usage records into a DataFrame.
+    total_prompts_energy_usage(df) — indicator grid: totals and averages.
+    energy_usage_timeline(df) — line chart of energy per prompt over time.
+    cpu_gpu_usage_per_prompt(df) — grouped bar: CPU vs GPU watts per prompt.
+    estimated_vs_actual_power(df) — bar comparison of estimated vs measured.
+    baseline_vs_total_usage(df) — line overlay of baseline and total energy.
+    model_comparison(df) — bar chart of average energy per model.
+"""
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -6,6 +23,16 @@ from greenprompt.dbconn import get_prompt_usage
 
 
 def load_usage_data():
+    """
+    Load all prompt_usage records from SQLite into a pandas DataFrame.
+
+    Calls dbconn.get_prompt_usage() with no filters. Converts the timestamp
+    column to datetime. Prints the record count as a progress indicator.
+
+    Returns:
+        pandas.DataFrame with all columns from the prompt_usage table and
+        a parsed datetime timestamp column.
+    """
     """
     Load usage data from the SQLite database into a pandas DataFrame.
     """
