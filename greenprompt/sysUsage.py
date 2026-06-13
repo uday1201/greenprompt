@@ -89,20 +89,77 @@ def measure_power_mac(start_time, end_time, monitor=None):
         "baseline_energy_wh": baseline_energy_wh,
     }
 
-def measure_power_linux(pid, start_time, end_time):
+def measure_power_linux(start_time: float, end_time: float, monitor=None) -> dict:
     """
-    Placeholder: Uses psutil sensors_battery for Linux (not process-specific).
-    """
-    try:
-        # No direct per-process power usage; placeholder using battery info
-        power_start = psutil.sensors_battery().power_plugged if psutil.sensors_battery() else None
-        time.sleep(end_time - start_time)
-        power_end = psutil.sensors_battery().power_plugged if psutil.sensors_battery() else None
-        return f"Power plugged start: {power_start}, end: {power_end}"
-    except Exception as e:
-        return f"Error collecting power metrics on Linux: {e}"
+    Compute power and energy metrics for a Linux prompt run from LinuxPowerMonitor samples.
 
-def measure_power_windows(pid, start_time, end_time):
+    Mirrors measure_power_mac() exactly — reads (timestamp, sample_dict) tuples
+    from monitor.samples and averages the window matching [start_time, end_time].
+    Uses the 60 seconds before start_time as the idle baseline.
+
+    Args:
+        start_time: Unix timestamp when the prompt started.
+        end_time: Unix timestamp when the prompt ended.
+        monitor: LinuxPowerMonitor instance with a populated samples deque,
+            or None to return zero values with a warning.
+
+    Returns:
+        dict with keys: cpu_power_w, gpu_power_w, combined_power_w,
+        duration_sec, energy_wh, baseline_power_w, baseline_energy_wh.
+    """
+    duration = end_time - start_time
+
+    _zero = {
+        "cpu_power_w": 0.0,
+        "gpu_power_w": 0.0,
+        "combined_power_w": 0.0,
+        "duration_sec": duration,
+        "energy_wh": 0.0,
+        "baseline_power_w": 0.0,
+        "baseline_energy_wh": 0.0,
+    }
+
+    if monitor is None:
+        print("Warning: LinuxPowerMonitor not running — energy_wh will be 0. Start with 'greenprompt run'.")
+        return _zero
+
+    baseline_start = start_time - 60
+    baseline_samples = [
+        s for ts, s in getattr(monitor, "samples", [])
+        if baseline_start <= ts <= start_time
+    ]
+    prompt_samples = [
+        s for ts, s in getattr(monitor, "samples", [])
+        if start_time <= ts <= end_time
+    ]
+
+    if not prompt_samples:
+        print("Warning: No power samples in prompt window — monitor may need more warm-up time.")
+        return _zero
+
+    avg_cpu = sum(s.get("cpu_power_w", 0.0) for s in prompt_samples) / len(prompt_samples)
+    avg_gpu = sum(s.get("gpu_power_w", 0.0) for s in prompt_samples) / len(prompt_samples)
+    avg_combined = sum(s.get("combined_power_w", 0.0) for s in prompt_samples) / len(prompt_samples)
+    energy_wh = (avg_combined * duration) / 3600.0
+
+    if baseline_samples:
+        baseline_avg = sum(s.get("combined_power_w", 0.0) for s in baseline_samples) / len(baseline_samples)
+        baseline_energy_wh = (baseline_avg * 60.0) / 3600.0
+    else:
+        baseline_avg = 0.0
+        baseline_energy_wh = 0.0
+
+    return {
+        "cpu_power_w": avg_cpu,
+        "gpu_power_w": avg_gpu,
+        "combined_power_w": avg_combined,
+        "duration_sec": duration,
+        "energy_wh": energy_wh,
+        "baseline_power_w": baseline_avg,
+        "baseline_energy_wh": baseline_energy_wh,
+    }
+
+def measure_power_windows(pid, start_time, end_time):  # noqa: ARG001
     """
     Placeholder: Uses WMI for Windows. Not process-specific.
     """
@@ -119,31 +176,39 @@ def measure_power_for_pid(pid, start_time, end_time, monitor=None):
     """
     Dispatch power measurement to the appropriate OS-specific function.
 
-    On macOS, reads from the provided PowerMonitor sample buffer.
-    On Linux and Windows, returns a placeholder string (not yet implemented).
+    On macOS, reads from the PowerMonitor sample buffer (samplerMac.py).
+    On Linux, reads from the LinuxPowerMonitor sample buffer (samplerLinux.py).
+    On Windows, returns a zero dict (not yet implemented).
 
     Args:
-        pid: Process ID (used on Linux/Windows for future per-process sampling).
+        pid: Process ID (reserved for future per-process filtering).
         start_time: Unix timestamp when the workload started.
         end_time: Unix timestamp when the workload ended.
-        monitor: PowerMonitor instance (required on macOS; ignored on others).
+        monitor: Platform monitor instance (PowerMonitor or LinuxPowerMonitor).
 
     Returns:
-        On macOS: dict with cpu_power_w, gpu_power_w, combined_power_w,
-            duration_sec, energy_wh, baseline_power_w, baseline_energy_wh.
-        On Linux/Windows: str explaining the limitation.
+        dict with cpu_power_w, gpu_power_w, combined_power_w, duration_sec,
+        energy_wh, baseline_power_w, baseline_energy_wh. Never returns a string.
     """
     os_type = constants.OS
     if os_type == "Darwin":
         return measure_power_mac(start_time, end_time, monitor)
     elif os_type == "Linux":
-        #return measure_power_linux(pid, start_time, end_time)
-        return "Linux power measurement not implemented."
+        return measure_power_linux(start_time, end_time, monitor)
     elif os_type == "Windows":
-        #return measure_power_windows(pid, start_time, end_time)
-        return "Windows power measurement not implemented."
+        duration = end_time - start_time
+        return {
+            "cpu_power_w": 0.0, "gpu_power_w": 0.0, "combined_power_w": 0.0,
+            "duration_sec": duration, "energy_wh": 0.0,
+            "baseline_power_w": 0.0, "baseline_energy_wh": 0.0,
+        }
     else:
-        return "Unsupported OS for power measurement."
+        duration = end_time - start_time
+        return {
+            "cpu_power_w": 0.0, "gpu_power_w": 0.0, "combined_power_w": 0.0,
+            "duration_sec": duration, "energy_wh": 0.0,
+            "baseline_power_w": 0.0, "baseline_energy_wh": 0.0,
+        }
     
 def has_gpu():
     """
@@ -175,25 +240,44 @@ def has_gpu():
     
 def get_gpu_usage():
     """
-    Return current GPU utilization statistics.
+    Return current GPU utilization and power statistics.
 
-    Linux/Windows: queries nvidia-smi for utilization %, memory used, total.
-    macOS: returns a not-supported message (powermetrics handles GPU on macOS).
+    Linux/Windows: queries nvidia-smi for power draw, utilization, memory,
+    and temperature. Handles [N/A] fields gracefully.
+    macOS: returns a not-supported message (powermetrics covers GPU on macOS).
 
     Returns:
-        str — CSV-formatted nvidia-smi output on Linux/Windows, or an
-        explanatory string on macOS or on error.
+        str — formatted GPU stats string, or an explanatory string on error.
     """
     os_type = constants.OS
     try:
         if os_type == "Darwin":
             return "GPU usage monitoring not supported on macOS"
         elif os_type in ["Linux", "Windows"]:
-            output = subprocess.check_output(["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total", "--format=csv,nounits,noheader"]).decode()
-            return output
+            output = subprocess.check_output(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=name,power.draw,power.limit,utilization.gpu,"
+                    "utilization.memory,memory.used,memory.total,temperature.gpu",
+                    "--format=csv,noheader",
+                ],
+                stderr=subprocess.DEVNULL,
+            ).decode().strip()
+            # Parse and reformat so [N/A] values are visible but don't crash callers
+            parts = [p.strip() for p in output.split(",")]
+            labels = ["name", "power_draw", "power_limit", "gpu_util",
+                      "mem_util", "mem_used", "mem_total", "temperature"]
+            stats = dict(zip(labels, parts))
+            return (
+                f"GPU: {stats.get('name', 'N/A')} | "
+                f"Power: {stats.get('power_draw', 'N/A')} / {stats.get('power_limit', 'N/A')} | "
+                f"GPU util: {stats.get('gpu_util', 'N/A')} | "
+                f"Mem: {stats.get('mem_used', 'N/A')} / {stats.get('mem_total', 'N/A')} | "
+                f"Temp: {stats.get('temperature', 'N/A')}"
+            )
         else:
             return "GPU usage monitoring not supported on this OS."
-    except Exception as e:
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as e:
         return f"Error retrieving GPU usage: {e}"
     
 def parse_powermetrics_output(output: str, duration_sec: float) -> dict:

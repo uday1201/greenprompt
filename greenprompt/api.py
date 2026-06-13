@@ -20,7 +20,7 @@ Known issues:
 """
 
 from flask import Flask, render_template, request, jsonify, Response
-from analytics import (
+from greenprompt.analytics import (
     load_usage_data,
     total_prompts_energy_usage,
     energy_usage_timeline,
@@ -37,7 +37,6 @@ import logging
 import json
 from plotly.utils import PlotlyJSONEncoder
 import requests
-from greenprompt.samplerMac import PowerMonitor
 
 # global variable to hold the power monitor instance
 global monitor
@@ -156,7 +155,7 @@ def ollama_proxy(subpath):
     incorrect — Ollama's base path is /api/<subpath>. This is a known bug.
     """
     # Construct the target URL on the Ollama server (default port 11434)
-    target_url = f"http://localhost:11434/ollama/api/{subpath}"
+    target_url = f"http://localhost:11434/api/{subpath}"
     # Forward headers, preserving content type and authorization
     headers = {
         key: value
@@ -190,9 +189,18 @@ def ollama_proxy(subpath):
 
 
 if __name__ == "__main__":
+    import argparse as _argparse
+    _parser = _argparse.ArgumentParser()
+    _parser.add_argument("--port", type=int, default=5000)
+    _args = _parser.parse_args()
+
     if constants.OS == "Darwin":
-        # Initialize the power monitor for macOS
+        from greenprompt.samplerMac import PowerMonitor
         monitor = PowerMonitor()
         monitor.start()
+    elif constants.OS == "Linux":
+        from greenprompt.samplerLinux import LinuxPowerMonitor
+        monitor = LinuxPowerMonitor(cpu_tdp_w=getattr(constants, "CPU_TDP_W", 40.0))
+        monitor.start()
     logging.info("Starting API server...")
-    app.run(debug=False)
+    app.run(host="127.0.0.1", port=_args.port, debug=False)

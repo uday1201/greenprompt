@@ -33,6 +33,44 @@ def sanitize_key(key):
     return key.upper().replace(" ", "_").replace("(", "").replace(")", "")
 
 
+def detect_cpu_tdp_w() -> float:
+    """
+    Estimate CPU TDP in watts for the current machine.
+
+    Checks known CPU brand strings against a lookup table. Falls back to
+    40W, a reasonable default for ARM Cortex-X925 (20-core) systems.
+
+    Returns:
+        Estimated CPU TDP in watts as a float.
+    """
+    try:
+        import cpuinfo
+        brand = cpuinfo.get_cpu_info().get("brand_raw", "").lower()
+        # Known TDP estimates by CPU family
+        tdp_map = [
+            ("cortex-x925", 40.0),
+            ("cortex-x4",   30.0),
+            ("cortex-x3",   25.0),
+            ("cortex-x2",   20.0),
+            ("cortex-x1",   15.0),
+            ("a78",         10.0),
+            ("i9-",         65.0),
+            ("i7-",         45.0),
+            ("i5-",         35.0),
+            ("i3-",         25.0),
+            ("ryzen 9",     65.0),
+            ("ryzen 7",     45.0),
+            ("ryzen 5",     35.0),
+            ("apple m",     20.0),
+        ]
+        for keyword, tdp in tdp_map:
+            if keyword in brand:
+                return tdp
+    except Exception:
+        pass
+    return 40.0  # default for Cortex-X925
+
+
 def check_ollama():
     """
     Check if Ollama is installed. If not, install it and return the port.
@@ -85,6 +123,7 @@ def main():
 
     # Save system information to constants.py
     constants_py_path = os.path.join(os.getcwd(), "constants.py")
+    cpu_tdp_w = detect_cpu_tdp_w()
     with open(constants_py_path, "w") as py_file:
         py_file.write("# Auto-generated constants file\n")
         for key, value in system_info.items():
@@ -92,7 +131,10 @@ def main():
             py_file.write(f"{sanitized_key} = {repr(value)}\n")
         # Add ollama URL
         py_file.write(f"OLLAMA_URL = {repr(OLLAMA_URL)}\n")
-    print(f"✅ System information saved to {constants_py_path}")
+        # CPU TDP estimate used by LinuxPowerMonitor for CPU energy estimation.
+        # Adjust this value to match your hardware if you know the actual TDP.
+        py_file.write(f"CPU_TDP_W = {cpu_tdp_w}\n")
+    print(f"✅ System information saved to {constants_py_path} (CPU_TDP_W={cpu_tdp_w}W)")
 
     # Download required NLTK data
     print("Downloading required NLTK data...")

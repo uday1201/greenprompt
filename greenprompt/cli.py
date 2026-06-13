@@ -121,10 +121,11 @@ def main():
     args = parser.parse_args()
 
     if args.command == "setup":
-        # Verify sudo privileges
-        if os.geteuid() != 0:
+        # sudo only needed on macOS (powermetrics requires root)
+        from greenprompt import constants as _c
+        if _c.OS == "Darwin" and os.geteuid() != 0:
             print(
-                "Error: 'setup' requires sudo privileges. Please run 'sudo greenprompt setup'"
+                "Error: 'setup' requires sudo privileges on macOS. Please run 'sudo greenprompt setup'"
             )
             sys.exit(1)
         # Run setup.py file
@@ -134,10 +135,10 @@ def main():
         print("✅ Setup complete: database initialized and constants saved")
 
     elif args.command == "run":
-        # Verify sudo privileges
-        if os.geteuid() != 0:
+        from greenprompt import constants as _c
+        if _c.OS == "Darwin" and os.geteuid() != 0:
             print(
-                "Error: 'run' requires sudo privileges. Please run 'sudo greenprompt run'"
+                "Error: 'run' requires sudo privileges on macOS. Please run 'sudo greenprompt run'"
             )
             sys.exit(1)
         print(f"Starting API server on port {args.port}...")
@@ -198,10 +199,10 @@ def main():
             print(f"Error opening dashboard: {e}")
 
     elif args.command == "stop":
-        # Verify sudo privileges
-        if os.geteuid() != 0:
+        from greenprompt import constants as _c
+        if _c.OS == "Darwin" and os.geteuid() != 0:
             print(
-                "Error: 'stop' requires sudo privileges. Please run 'sudo greenprompt stop'"
+                "Error: 'stop' requires sudo privileges on macOS. Please run 'sudo greenprompt stop'"
             )
             sys.exit(1)
         port = args.port

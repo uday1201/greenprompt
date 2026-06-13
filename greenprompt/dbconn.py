@@ -65,6 +65,15 @@ def init_db():
     conn.close()
 
 
+def _first_not_none(data: dict, *keys):
+    """Return the first value from data that is not None, checking keys in order."""
+    for key in keys:
+        val = data.get(key)
+        if val is not None:
+            return val
+    return None
+
+
 def save_prompt_usage(data: dict):
     """
     Saves a prompt usage record to the prompt_usage table.
@@ -76,7 +85,7 @@ def save_prompt_usage(data: dict):
         """
         INSERT INTO prompt_usage (
             timestamp, prompt, prompt_score, prompt_score_details, response, model, prompt_tokens,
-            completion_tokens, total_tokens, energy_estimate_prompt, energy_estimate_tokens ,duration_sec, energy_wh,
+            completion_tokens, total_tokens, energy_estimate_prompt, energy_estimate_tokens, duration_sec, energy_wh,
             baseline_power_w, baseline_energy_wh,
             cpu_power_w, gpu_power_w, combined_power_w, system_info
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -94,12 +103,12 @@ def save_prompt_usage(data: dict):
             data.get("energy_estimate_prompt"),
             data.get("energy_estimate_tokens"),
             data.get("duration_sec"),
-            data.get("total_energy (Wh)") or data.get("energy_wh"),
-            data.get("baseline_power (W)") or data.get("baseline_power_w"),
-            data.get("baseline_energy (Wh)") or data.get("baseline_energy_wh"),
-            data.get("cpu_power_w (W)") or data.get("cpu_power_w"),
-            data.get("gpu_power_w (W)") or data.get("gpu_power_w"),
-            data.get("combined_power_w (W)") or data.get("combined_power_w"),
+            _first_not_none(data, "total_energy (Wh)", "energy_wh"),
+            _first_not_none(data, "baseline_power (W)", "baseline_power_w"),
+            _first_not_none(data, "baseline_energy (Wh)", "baseline_energy_wh"),
+            _first_not_none(data, "cpu_power_w (W)", "cpu_power_w"),
+            _first_not_none(data, "gpu_power_w (W)", "gpu_power_w"),
+            _first_not_none(data, "combined_power_w (W)", "combined_power_w"),
             system_info,
         ),
     )
