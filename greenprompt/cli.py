@@ -89,6 +89,9 @@ def main():
     p_prompt.add_argument(
         "--model", type=str, default="llama2", help="Model to use (default: llama2)"
     )
+    p_prompt.add_argument(
+        "--port", type=int, default=5000, help="API server port (default: 5000)"
+    )
     # monitor command
     p_mon = subparsers.add_parser(
         "monitor", help="Display the last N prompt usage entries"
@@ -103,7 +106,10 @@ def main():
     )
 
     # dashboard command
-    subparsers.add_parser("dashboard", help="Open the dashboard in your browser")
+    p_dash = subparsers.add_parser("dashboard", help="Open the dashboard in your browser")
+    p_dash.add_argument(
+        "--port", type=int, default=5000, help="API server port (default: 5000)"
+    )
 
     # stop command
     p_stop = subparsers.add_parser("stop", help="Stop the API server")
@@ -135,7 +141,7 @@ def main():
     elif args.command == "prompt":
         # Make api call to run the prompt
         print("Running prompt...")
-        url = "http://127.0.0.1:5000/api/prompt"
+        url = f"http://127.0.0.1:{args.port}/api/prompt"
         payload = {"prompt": args.prompt, "model": args.model}
         try:
             response = requests.post(url, json=payload)
@@ -180,7 +186,7 @@ def main():
 
     elif args.command == "dashboard":
         print("Starting the dashboard...")
-        url = "http://localhost:5000/dashboard"
+        url = f"http://localhost:{args.port}/dashboard"
         try:
             webbrowser.open(url)
         except Exception as e:
