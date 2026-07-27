@@ -1,50 +1,216 @@
 name: Publish Python Package to PyPI
 
+# Releasing is a deliberate act: push a version tag and this ships it.
+#
+#   poetry version minor          # or major / patch / 0.2.0
+#   git commit -am "chore(release): 0.2.0"
+#   git tag v0.2.0
+#   git push && git push --tags
+#
+# The tag must match the version in pyproject.toml, and that version must not
+# already exist on PyPI — both are checked before anything is uploaded, because
+# a PyPI version number can never be reused once published.
+#
+# Use the workflow_dispatch trigger with dry_run enabled to rehearse the whole
+# pipeline (lint, tests, build, metadata check) without publishing.
+#
+# Authentication is PyPI Trusted Publishing (OIDC) — there is no API token.
+# One-time setup at
+# https://pypi.org/manage/project/greenprompt/settings/publishing/ :
+#   Owner: uday1201 | Repository: greenprompt
+#   Workflow: publish.yaml | Environment: pypi
+
 on:
   push:
     tags:
-      - 'v*.*.*'  # Trigger on version tags like v1.2.3
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build and verify only — do not publish to PyPI'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# Never cancel a release mid-flight.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PACKAGE_NAME: greenprompt
 
 jobs:
-  publish:
+  verify:
+    name: Verify
     runs-on: ubuntu-latest
-
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.11'
+          cache: pip
 
-      - name: Install Poetry
+      - name: Resolve and validate version
+        id: version
         run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          set -euo pipefail
+          VERSION="$(python -c '
+          import tomllib, pathlib
+          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          print(data["tool"]["poetry"]["version"])
+          ')"
+          echo "pyproject version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Cache Poetry dependencies
-        uses: actions/cache@v3
+          # On a tag push the tag must agree with pyproject.toml, otherwise the
+          # git history and the published artifact disagree about what shipped.
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME#v}"
+            if [ "$TAG" != "$VERSION" ]; then
+              echo "::error::Tag v$TAG does not match pyproject.toml version $VERSION."
+              echo "::error::Run 'poetry version $TAG' and commit, or retag as v$VERSION."
+              exit 1
+            fi
+            echo "Tag v$TAG matches pyproject.toml."
+          fi
+
+      - name: Check the version is not already on PyPI
+        run: |
+          set -euo pipefail
+          # Fail here with an actionable message rather than letting the upload
+          # die on an opaque "File already exists" 400 at the very last step.
+          if curl -sSf "https://pypi.org/pypi/${PACKAGE_NAME}/json" -o pypi.json; then
+            if python -c '
+          import json, os, sys
+          releases = json.load(open("pypi.json"))["releases"]
+          sys.exit(0 if os.environ["VERSION"] in releases else 1)
+          ' ; then
+              echo "::error::${PACKAGE_NAME} ${VERSION} is already published on PyPI and cannot be replaced."
+              echo "::error::Bump the version with 'poetry version patch' and tag again."
+              exit 1
+            fi
+            echo "${VERSION} is not yet on PyPI."
+          else
+            echo "Package not found on PyPI — treating as a first release."
+          fi
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+
+      - name: Install Ruff
+        run: pip install 'ruff==0.11.11'
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+
+      - name: Pre-download NLTK data
+        run: |
+          python - <<'PY'
+          import nltk
+          for r in ("punkt", "punkt_tab", "averaged_perceptron_tagger",
+                    "averaged_perceptron_tagger_eng", "wordnet", "stopwords"):
+              nltk.download(r, quiet=True)
+          PY
+
+      - name: Run tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/run"
+          cd "$RUNNER_TEMP/run"
+          python -m unittest discover -s "$GITHUB_WORKSPACE/tests" -t "$GITHUB_WORKSPACE"
+
+  build:
+    name: Build distributions
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
-          path: ~/.cache/pypoetry
-          key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-poetry-
+          python-version: '3.11'
+          cache: pip
 
-      - name: Install dependencies
-        run: poetry install --no-interaction --no-ansi
+      - name: Install Poetry and Twine
+        run: pip install poetry twine
 
-      - name: Lint with Ruff
-        run: |
-          poetry add ruff
-          poetry run ruff check .
-      - name: Clean dist directory
-        run: rm -rf dist/
-      - name: Build distributions
+      - name: Build
         run: poetry build --no-interaction --no-ansi
 
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Check distribution metadata
+        run: twine check --strict dist/*
+
+      - name: Verify the wheel installs and runs
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/verify
+          /tmp/verify/bin/pip install --quiet dist/*.whl
+          cd "$RUNNER_TEMP"
+          /tmp/verify/bin/greenprompt --help
+          /tmp/verify/bin/greenp score "Summarize this. Format: bullet points."
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - uses: actions/upload-artifact@v4
         with:
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: [verify, build]
+    # Skipped for a dry run; always runs for a real tag push.
+    if: github.event_name == 'push' || inputs.dry_run == false
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # required for Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # No user/password: identity is proven via OIDC.
+
+  github-release:
+    name: Create GitHub Release
+    needs: [verify, publish]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Create release with autogenerated notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" \
+            --title "v$VERSION" \
+            --generate-notes \
+            --verify-tag \
+            dist/*
