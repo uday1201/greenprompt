@@ -1,50 +1,80 @@
-Prepare a new GreenPrompt PyPI release.
+Prepare and cut a GreenPrompt release.
 
-Current version is in `pyproject.toml` under `[tool.poetry] version`.
-PyPI package: https://pypi.org/project/greenprompt/
+Publishing is automated. `.github/workflows/publish.yaml` triggers on any `v*.*.*` tag and runs: verify (lint, 76 tests, version guards) → build (`poetry build`, `twine check --strict`, wheel install smoke test) → publish to PyPI via Trusted Publishing (OIDC, no API token) → create a GitHub Release with the artifacts attached.
 
-Task: $ARGUMENTS (e.g., "bump to 0.2.0", "patch release", "check release readiness")
+Your job is to get the repository ready and push the tag. Do NOT run `poetry publish` by hand — that bypasses every guard below.
 
-Steps:
+Task: $ARGUMENTS (e.g. "bump to 0.2.0", "patch release", "check release readiness")
 
-1. Read the current version:
-   ```bash
-   grep '^version' greenprompt/greenprompt/pyproject.toml
-   ```
+## 1. Check readiness
 
-2. Run the linter and formatter to ensure code is clean:
-   ```bash
-   cd greenprompt/greenprompt && poetry run ruff check .
-   cd greenprompt/greenprompt && poetry run ruff fmt --check .
-   ```
+```bash
+# Current version
+grep '^version' pyproject.toml
 
-3. Check for known bugs that should be fixed before release. Read these files and verify:
-   - `api.py` line 2: `from analytics import` → should be `from greenprompt.analytics import`
-   - `api.py` line 130: proxy URL `/ollama/api/` → should be `/api/`
-   - `core.py` line 73-141: `gpu_usage` may be undefined if `has_gpu()` returns False
-   - `analytics.py` lines 96-98: `start_time`/`end_time` params are overwritten with None
-   - `cli.py` lines 199-209: `score` command redundantly re-parses args
-   Report which bugs are still present.
+# What is already on PyPI (a published version can NEVER be reused)
+curl -s https://pypi.org/pypi/greenprompt/json | python3 -c "import json,sys; print(sorted(json.load(sys.stdin)['releases']))"
 
-4. Verify the package builds cleanly:
-   ```bash
-   cd greenprompt/greenprompt && poetry build
-   ```
-   Check `dist/` for the generated `.whl` and `.tar.gz`.
+# Working tree must be clean and on main
+git status --short && git branch --show-current
+```
 
-5. If bumping the version, update `pyproject.toml`:
-   ```bash
-   cd greenprompt/greenprompt && poetry version <new-version>
-   # or edit manually
-   ```
+Run the same gates CI will run, so failures surface locally instead of mid-release:
 
-6. Generate a release checklist:
-   - [ ] Version bumped in pyproject.toml
-   - [ ] Ruff lint passes
-   - [ ] Known bugs addressed (or documented as known issues)
-   - [ ] README reflects new features/changes
-   - [ ] `poetry build` succeeds
-   - [ ] Test install: `pip install dist/*.whl` and run `greenprompt --help`
-   - [ ] Publish: `poetry publish` (requires PyPI credentials)
+```bash
+ruff check .
+python -m unittest discover -s tests -t .
+poetry build && python -m twine check --strict dist/*
+```
 
-Do NOT publish to PyPI without explicit confirmation from the user.
+## 2. Choose the version
+
+Semver against the changes since the last tag (`git log $(git describe --tags --abbrev=0)..HEAD --oneline`):
+
+- **patch** — bug fixes only
+- **minor** — new features, new platform support, backwards-compatible changes
+- **major** — breaking changes to the CLI, REST API, or database schema
+
+The version in `pyproject.toml` and the tag MUST agree; the workflow hard-fails on a mismatch, and it also refuses to republish a version that already exists on PyPI.
+
+## 3. Cut it
+
+```bash
+poetry version minor          # or major / patch / an explicit 0.2.0
+git commit -am "chore(release): $(grep '^version' pyproject.toml | cut -d'"' -f2)"
+git push
+git tag "v$(grep '^version' pyproject.toml | cut -d'"' -f2)"
+git push --tags
+```
+
+Then watch it:
+
+```bash
+gh run watch
+```
+
+## 4. Rehearse without publishing
+
+To exercise the full pipeline (lint, tests, build, metadata check) with the upload skipped:
+
+```bash
+gh workflow run publish.yaml -f dry_run=true
+gh run watch
+```
+
+## Release checklist
+
+- [ ] Working tree clean, on `main`, up to date with origin
+- [ ] `ruff check .` passes
+- [ ] Full test suite passes
+- [ ] Version bumped in `pyproject.toml` and not already on PyPI
+- [ ] README and `docs/` reflect any behaviour changes in this release
+- [ ] `poetry build` + `twine check --strict` pass locally
+- [ ] Tag matches the `pyproject.toml` version exactly, prefixed with `v`
+
+## Notes
+
+- **Trusted Publishing must be configured once** at https://pypi.org/manage/project/greenprompt/settings/publishing/ with owner `uday1201`, repository `greenprompt`, workflow `publish.yaml`, environment `pypi`. Without it the publish step fails to authenticate.
+- The `pypi` GitHub environment is where you add required reviewers if you want a human approval gate before any upload.
+- Never delete and re-push a tag that has already published — PyPI will reject the duplicate version. Bump the patch version instead.
+- Do not publish to PyPI without explicit confirmation from the user.
