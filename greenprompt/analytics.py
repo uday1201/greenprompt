@@ -19,7 +19,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from greenprompt.dbconn import get_prompt_usage
+from greenprompt.dbconn import get_prompt_usage, PROMPT_USAGE_COLUMNS
 
 
 def load_usage_data():
@@ -29,16 +29,17 @@ def load_usage_data():
     Calls dbconn.get_prompt_usage() with no filters. Converts the timestamp
     column to datetime. Prints the record count as a progress indicator.
 
+    When the database is empty, returns an empty DataFrame that still carries
+    every prompt_usage column, so the dashboard renders empty charts instead of
+    raising KeyError on a fresh install.
+
     Returns:
         pandas.DataFrame with all columns from the prompt_usage table and
         a parsed datetime timestamp column.
     """
-    """
-    Load usage data from the SQLite database into a pandas DataFrame.
-    """
     data = get_prompt_usage()
     print(f"Loaded {len(data)} records from the database")
-    df = pd.DataFrame(data)
+    df = pd.DataFrame(data, columns=list(PROMPT_USAGE_COLUMNS))
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     return df
 

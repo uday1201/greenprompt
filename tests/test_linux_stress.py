@@ -24,12 +24,16 @@ from unittest.mock import MagicMock, patch, mock_open
 # Helpers / lightweight fakes
 # ---------------------------------------------------------------------------
 
+
 def _make_monitor(samples=None, sample_interval=1):
     """Return a minimal LinuxPowerMonitor-like object without starting a thread."""
     from greenprompt.samplerLinux import LinuxPowerMonitor
-    with patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None), \
-         patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}), \
-         patch("psutil.cpu_percent", return_value=[10.0] * 20):
+
+    with (
+        patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None),
+        patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}),
+        patch("psutil.cpu_percent", return_value=[10.0] * 20),
+    ):
         m = LinuxPowerMonitor.__new__(LinuxPowerMonitor)
         m.samples = deque(maxlen=600)
         m.running = False
@@ -54,10 +58,11 @@ def _sample(cpu=5.0, gpu=3.0):
 # 1. _parse_nvidia_power
 # ===========================================================================
 
-class TestParseNvidiaPower(unittest.TestCase):
 
+class TestParseNvidiaPower(unittest.TestCase):
     def _p(self, raw):
         from greenprompt.samplerLinux import _parse_nvidia_power
+
         return _parse_nvidia_power(raw)
 
     def test_normal_float(self):
@@ -88,15 +93,18 @@ class TestParseNvidiaPower(unittest.TestCase):
 # 2. CPU architecture detection
 # ===========================================================================
 
-class TestDetectRaplPath(unittest.TestCase):
 
+class TestDetectRaplPath(unittest.TestCase):
     def setUp(self):
         from greenprompt.samplerLinux import _detect_rapl_path
+
         self._fn = _detect_rapl_path
 
     def test_no_rapl_returns_none(self):
-        with patch("os.path.exists", return_value=False), \
-             patch("glob.glob", return_value=[]):
+        with (
+            patch("os.path.exists", return_value=False),
+            patch("glob.glob", return_value=[]),
+        ):
             self.assertIsNone(self._fn())
 
     def test_direct_path_found(self):
@@ -106,8 +114,10 @@ class TestDetectRaplPath(unittest.TestCase):
 
     def test_glob_fallback(self):
         fake = "/sys/class/powercap/intel-rapl:0/intel-rapl:0:0/energy_uj"
-        with patch("os.path.exists", return_value=False), \
-             patch("glob.glob", return_value=[fake]):
+        with (
+            patch("os.path.exists", return_value=False),
+            patch("glob.glob", return_value=[fake]),
+        ):
             self.assertEqual(self._fn(), fake)
 
     def test_multiple_glob_returns_first(self):
@@ -115,15 +125,17 @@ class TestDetectRaplPath(unittest.TestCase):
             "/sys/class/powercap/intel-rapl:0/intel-rapl:0:0/energy_uj",
             "/sys/class/powercap/intel-rapl:1/intel-rapl:1:0/energy_uj",
         ]
-        with patch("os.path.exists", return_value=False), \
-             patch("glob.glob", return_value=paths):
+        with (
+            patch("os.path.exists", return_value=False),
+            patch("glob.glob", return_value=paths),
+        ):
             self.assertEqual(self._fn(), paths[0])
 
 
 class TestDetectCpuClusters(unittest.TestCase):
-
     def setUp(self):
         from greenprompt.samplerLinux import _detect_cpu_clusters
+
         self._fn = _detect_cpu_clusters
 
     def _freq(self, max_mhz):
@@ -171,14 +183,19 @@ class TestDetectCpuClusters(unittest.TestCase):
 # 3. LinuxPowerMonitor construction — arch mode selection
 # ===========================================================================
 
-class TestMonitorModeSelection(unittest.TestCase):
 
+class TestMonitorModeSelection(unittest.TestCase):
     def _build(self, rapl=None, clusters=None):
         from greenprompt.samplerLinux import LinuxPowerMonitor
-        with patch("greenprompt.samplerLinux._detect_rapl_path", return_value=rapl), \
-             patch("greenprompt.samplerLinux._detect_cpu_clusters",
-                   return_value=clusters or {}), \
-             patch("psutil.cpu_percent", return_value=[0.0] * 4):
+
+        with (
+            patch("greenprompt.samplerLinux._detect_rapl_path", return_value=rapl),
+            patch(
+                "greenprompt.samplerLinux._detect_cpu_clusters",
+                return_value=clusters or {},
+            ),
+            patch("psutil.cpu_percent", return_value=[0.0] * 4),
+        ):
             return LinuxPowerMonitor()
 
     def test_rapl_mode_when_rapl_available(self):
@@ -208,13 +225,16 @@ class TestMonitorModeSelection(unittest.TestCase):
 # 4. _sample_cpu_rapl — sysfs read edge cases
 # ===========================================================================
 
-class TestSampleCpuRapl(unittest.TestCase):
 
+class TestSampleCpuRapl(unittest.TestCase):
     def _monitor_rapl(self, rapl_path="/fake/energy_uj"):
         from greenprompt.samplerLinux import LinuxPowerMonitor
-        with patch("greenprompt.samplerLinux._detect_rapl_path", return_value=rapl_path), \
-             patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}), \
-             patch("psutil.cpu_percent", return_value=[0.0] * 4):
+
+        with (
+            patch("greenprompt.samplerLinux._detect_rapl_path", return_value=rapl_path),
+            patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}),
+            patch("psutil.cpu_percent", return_value=[0.0] * 4),
+        ):
             m = LinuxPowerMonitor()
         m._rapl_path = rapl_path
         m._rapl_max_path = rapl_path.replace("energy_uj", "max_energy_range_uj")
@@ -258,6 +278,9 @@ class TestSampleCpuRapl(unittest.TestCase):
         with patch("builtins.open", fake_open), patch("time.time", return_value=t0):
             result = m._sample_cpu_rapl()
         self.assertGreater(result, 0.0)
+        # The wrapped delta must be reconstructed via max_energy_range_uj, not
+        # clamped or dropped, so the computed wattage matches exactly.
+        self.assertAlmostEqual(result, expected_w, places=1)
 
     def test_oserror_returns_zero(self):
         m = self._monitor_rapl()
@@ -278,8 +301,10 @@ class TestSampleCpuRapl(unittest.TestCase):
         ts = time.time()
         m._rapl_last_energy = 500_000
         m._rapl_last_ts = ts
-        with patch("builtins.open", mock_open(read_data="1000000")), \
-             patch("time.time", return_value=ts):  # same timestamp → delta_s == 0
+        with (
+            patch("builtins.open", mock_open(read_data="1000000")),
+            patch("time.time", return_value=ts),
+        ):  # same timestamp → delta_s == 0
             self.assertEqual(m._sample_cpu_rapl(), 0.0)
 
 
@@ -287,13 +312,18 @@ class TestSampleCpuRapl(unittest.TestCase):
 # 5. _sample_cpu_biglittle — cluster model edge cases
 # ===========================================================================
 
-class TestSampleCpuBiglittle(unittest.TestCase):
 
+class TestSampleCpuBiglittle(unittest.TestCase):
     def _monitor_biglittle(self, clusters):
         from greenprompt.samplerLinux import LinuxPowerMonitor
-        with patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None), \
-             patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value=clusters), \
-             patch("psutil.cpu_percent", return_value=[0.0] * 20):
+
+        with (
+            patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None),
+            patch(
+                "greenprompt.samplerLinux._detect_cpu_clusters", return_value=clusters
+            ),
+            patch("psutil.cpu_percent", return_value=[0.0] * 20),
+        ):
             m = LinuxPowerMonitor()
         return m
 
@@ -303,8 +333,10 @@ class TestSampleCpuBiglittle(unittest.TestCase):
         cpu_pcts = [0.0] * 20
         sysfs_freq = "2808000"  # kHz = 2808 MHz
 
-        with patch("psutil.cpu_percent", return_value=cpu_pcts), \
-             patch("builtins.open", mock_open(read_data=sysfs_freq)):
+        with (
+            patch("psutil.cpu_percent", return_value=cpu_pcts),
+            patch("builtins.open", mock_open(read_data=sysfs_freq)),
+        ):
             result = m._sample_cpu_biglittle()
         # At 0% util, freq_ratio=1, result = idle_w for each cluster
         expected = 0.5 + 1.0  # A725 idle + X925 idle
@@ -315,8 +347,10 @@ class TestSampleCpuBiglittle(unittest.TestCase):
         m = self._monitor_biglittle(clusters)
         cpu_pcts = [100.0] * 4
 
-        with patch("psutil.cpu_percent", return_value=cpu_pcts), \
-             patch("builtins.open", mock_open(read_data="3900000")):
+        with (
+            patch("psutil.cpu_percent", return_value=cpu_pcts),
+            patch("builtins.open", mock_open(read_data="3900000")),
+        ):
             result = m._sample_cpu_biglittle()
         # Should not exceed sum of TDP values
         max_expected = 8.0 + 23.0
@@ -327,8 +361,10 @@ class TestSampleCpuBiglittle(unittest.TestCase):
         m = self._monitor_biglittle(clusters)
         cpu_pcts = [50.0] * 4
 
-        with patch("psutil.cpu_percent", return_value=cpu_pcts), \
-             patch("builtins.open", side_effect=OSError("no sysfs")):
+        with (
+            patch("psutil.cpu_percent", return_value=cpu_pcts),
+            patch("builtins.open", side_effect=OSError("no sysfs")),
+        ):
             result = m._sample_cpu_biglittle()
         # Should still return a positive number using max freq as fallback
         self.assertGreater(result, 0.0)
@@ -340,8 +376,10 @@ class TestSampleCpuBiglittle(unittest.TestCase):
         m.cpu_tdp_w = 20.0
         cpu_pcts = [50.0] * 2
 
-        with patch("psutil.cpu_percent", return_value=cpu_pcts), \
-             patch("builtins.open", mock_open(read_data="9999000")):
+        with (
+            patch("psutil.cpu_percent", return_value=cpu_pcts),
+            patch("builtins.open", mock_open(read_data="9999000")),
+        ):
             result = m._sample_cpu_biglittle()
         self.assertGreater(result, 0.0)
 
@@ -351,8 +389,10 @@ class TestSampleCpuBiglittle(unittest.TestCase):
         m = self._monitor_biglittle(clusters)
         cpu_pcts = [50.0, 50.0]  # only 2 entries for 5 cpu indices
 
-        with patch("psutil.cpu_percent", return_value=cpu_pcts), \
-             patch("builtins.open", mock_open(read_data="3900000")):
+        with (
+            patch("psutil.cpu_percent", return_value=cpu_pcts),
+            patch("builtins.open", mock_open(read_data="3900000")),
+        ):
             result = m._sample_cpu_biglittle()  # must not crash
         self.assertGreaterEqual(result, 0.0)
 
@@ -362,8 +402,10 @@ class TestSampleCpuBiglittle(unittest.TestCase):
         m = self._monitor_biglittle(clusters)
         cpu_pcts = [100.0]
         # Return a freq higher than max
-        with patch("psutil.cpu_percent", return_value=cpu_pcts), \
-             patch("builtins.open", mock_open(read_data="9999999")):
+        with (
+            patch("psutil.cpu_percent", return_value=cpu_pcts),
+            patch("builtins.open", mock_open(read_data="9999999")),
+        ):
             result = m._sample_cpu_biglittle()
         # power should be capped at TDP, not exceed it due to freq_ratio > 1
         self.assertLessEqual(result, 8.0 * 1.1)
@@ -373,10 +415,11 @@ class TestSampleCpuBiglittle(unittest.TestCase):
 # 6. NvidiaDmonReader edge cases
 # ===========================================================================
 
-class TestNvidiaDmonReader(unittest.TestCase):
 
+class TestNvidiaDmonReader(unittest.TestCase):
     def test_unavailable_sets_failed(self):
         from greenprompt.samplerLinux import NvidiaDmonReader
+
         with patch("subprocess.Popen", side_effect=FileNotFoundError):
             r = NvidiaDmonReader()
         self.assertTrue(r._failed)
@@ -384,12 +427,14 @@ class TestNvidiaDmonReader(unittest.TestCase):
 
     def test_oserror_sets_failed(self):
         from greenprompt.samplerLinux import NvidiaDmonReader
+
         with patch("subprocess.Popen", side_effect=OSError("perm denied")):
             r = NvidiaDmonReader()
         self.assertTrue(r._failed)
 
     def test_header_lines_skipped(self):
         from greenprompt.samplerLinux import NvidiaDmonReader
+
         lines = ["# gpu   pwr\n", "#  Idx   W\n", "   0   15\n"]
         proc = MagicMock()
         proc.stdout = iter(lines)
@@ -400,6 +445,7 @@ class TestNvidiaDmonReader(unittest.TestCase):
 
     def test_garbled_line_ignored(self):
         from greenprompt.samplerLinux import NvidiaDmonReader
+
         lines = ["garbage output\n", "   0  NOTANUMBER\n", "   0   7\n"]
         proc = MagicMock()
         proc.stdout = iter(lines)
@@ -410,6 +456,7 @@ class TestNvidiaDmonReader(unittest.TestCase):
 
     def test_empty_lines_ignored(self):
         from greenprompt.samplerLinux import NvidiaDmonReader
+
         lines = ["\n", "   \n", "   0   9\n"]
         proc = MagicMock()
         proc.stdout = iter(lines)
@@ -420,6 +467,7 @@ class TestNvidiaDmonReader(unittest.TestCase):
 
     def test_stop_terminates_process(self):
         from greenprompt.samplerLinux import NvidiaDmonReader
+
         proc = MagicMock()
         proc.stdout = iter([])
         with patch("subprocess.Popen", return_value=proc):
@@ -430,17 +478,20 @@ class TestNvidiaDmonReader(unittest.TestCase):
 
     def test_concurrent_reads_thread_safe(self):
         from greenprompt.samplerLinux import NvidiaDmonReader
+
         proc = MagicMock()
         proc.stdout = iter([f"   0   {i}\n" for i in range(100)])
         with patch("subprocess.Popen", return_value=proc):
             r = NvidiaDmonReader()
         errors = []
+
         def reader():
             for _ in range(200):
                 try:
                     r.get_power()
                 except Exception as e:
                     errors.append(e)
+
         threads = [threading.Thread(target=reader) for _ in range(10)]
         for t in threads:
             t.start()
@@ -453,20 +504,25 @@ class TestNvidiaDmonReader(unittest.TestCase):
 # 7. LinuxPowerMonitor lifecycle
 # ===========================================================================
 
-class TestMonitorLifecycle(unittest.TestCase):
 
+class TestMonitorLifecycle(unittest.TestCase):
     def _build_nogpu(self):
         from greenprompt.samplerLinux import LinuxPowerMonitor
-        with patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None), \
-             patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}), \
-             patch("psutil.cpu_percent", return_value=[10.0] * 4):
+
+        with (
+            patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None),
+            patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}),
+            patch("psutil.cpu_percent", return_value=[10.0] * 4),
+        ):
             m = LinuxPowerMonitor()
         return m
 
     def test_start_stop(self):
         m = self._build_nogpu()
-        with patch.object(m, "_check_gpu", return_value=False), \
-             patch("greenprompt.samplerLinux.NvidiaDmonReader") as MockDmon:
+        with (
+            patch.object(m, "_check_gpu", return_value=False),
+            patch("greenprompt.samplerLinux.NvidiaDmonReader") as MockDmon,
+        ):
             MockDmon.return_value._failed = True
             m.start()
             time.sleep(0.5)
@@ -477,12 +533,17 @@ class TestMonitorLifecycle(unittest.TestCase):
         """Monitor must survive 10 rapid start/stop cycles without deadlock."""
         for _ in range(10):
             from greenprompt.samplerLinux import LinuxPowerMonitor
-            with patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None), \
-                 patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}), \
-                 patch("psutil.cpu_percent", return_value=[5.0] * 4):
+
+            with (
+                patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None),
+                patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}),
+                patch("psutil.cpu_percent", return_value=[5.0] * 4),
+            ):
                 m = LinuxPowerMonitor()
-            with patch.object(m, "_check_gpu", return_value=False), \
-                 patch("greenprompt.samplerLinux.NvidiaDmonReader") as MockDmon:
+            with (
+                patch.object(m, "_check_gpu", return_value=False),
+                patch("greenprompt.samplerLinux.NvidiaDmonReader") as MockDmon,
+            ):
                 MockDmon.return_value._failed = True
                 m.start()
                 time.sleep(0.05)
@@ -491,8 +552,10 @@ class TestMonitorLifecycle(unittest.TestCase):
 
     def test_samples_accumulate_over_time(self):
         m = self._build_nogpu()
-        with patch.object(m, "_check_gpu", return_value=False), \
-             patch("greenprompt.samplerLinux.NvidiaDmonReader") as MockDmon:
+        with (
+            patch.object(m, "_check_gpu", return_value=False),
+            patch("greenprompt.samplerLinux.NvidiaDmonReader") as MockDmon,
+        ):
             MockDmon.return_value._failed = True
             m.start()
             time.sleep(3.5)
@@ -501,9 +564,12 @@ class TestMonitorLifecycle(unittest.TestCase):
 
     def test_deque_rotates_at_window_size(self):
         from greenprompt.samplerLinux import LinuxPowerMonitor
-        with patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None), \
-             patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}), \
-             patch("psutil.cpu_percent", return_value=[5.0] * 4):
+
+        with (
+            patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None),
+            patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}),
+            patch("psutil.cpu_percent", return_value=[5.0] * 4),
+        ):
             m = LinuxPowerMonitor(window_size=5)
         # Manually fill beyond window
         for i in range(10):
@@ -513,11 +579,15 @@ class TestMonitorLifecycle(unittest.TestCase):
     def test_sample_once_returns_dict(self):
         m = self._build_nogpu()
         m._dmon = None
+
         # linear_tdp mode: cpu_percent(interval=None) without percpu → scalar
         def _cpu_pct(*args, **kwargs):
             return [20.0] * 4 if kwargs.get("percpu") else 20.0
-        with patch.object(m, "_check_gpu", return_value=False), \
-             patch("psutil.cpu_percent", side_effect=_cpu_pct):
+
+        with (
+            patch.object(m, "_check_gpu", return_value=False),
+            patch("psutil.cpu_percent", side_effect=_cpu_pct),
+        ):
             result = m.sample_once()
         self.assertIsNotNone(result)
         self.assertIn("cpu_power_w", result)
@@ -564,8 +634,9 @@ class TestMonitorLifecycle(unittest.TestCase):
                     errors.append(e)
                 time.sleep(0.001)
 
-        threads = [threading.Thread(target=writer)] + \
-                  [threading.Thread(target=reader) for _ in range(5)]
+        threads = [threading.Thread(target=writer)] + [
+            threading.Thread(target=reader) for _ in range(5)
+        ]
         for t in threads:
             t.start()
         time.sleep(1.0)
@@ -576,8 +647,10 @@ class TestMonitorLifecycle(unittest.TestCase):
 
     def test_stop_latency_under_500ms(self):
         m = self._build_nogpu()
-        with patch.object(m, "_check_gpu", return_value=False), \
-             patch("greenprompt.samplerLinux.NvidiaDmonReader") as MockDmon:
+        with (
+            patch.object(m, "_check_gpu", return_value=False),
+            patch("greenprompt.samplerLinux.NvidiaDmonReader") as MockDmon,
+        ):
             MockDmon.return_value._failed = True
             m.start()
             time.sleep(0.5)
@@ -591,10 +664,11 @@ class TestMonitorLifecycle(unittest.TestCase):
 # 8. measure_power_linux edge cases
 # ===========================================================================
 
-class TestMeasurePowerLinux(unittest.TestCase):
 
+class TestMeasurePowerLinux(unittest.TestCase):
     def _call(self, start, end, monitor):
         from greenprompt.sysUsage import measure_power_linux
+
         return measure_power_linux(start, end, monitor)
 
     def test_none_monitor_returns_zeros(self):
@@ -637,8 +711,8 @@ class TestMeasurePowerLinux(unittest.TestCase):
         now = time.time()
         # Neighbors too far away (> 2 * sample_interval)
         samples = [
-            (now - 10.0, _sample()),   # too old
-            (now + 10.0, _sample()),   # too far in future
+            (now - 10.0, _sample()),  # too old
+            (now + 10.0, _sample()),  # too far in future
         ]
         m = _make_monitor(samples=samples, sample_interval=1)
         result = self._call(now - 0.05, now + 0.05, m)
@@ -662,8 +736,12 @@ class TestMeasurePowerLinux(unittest.TestCase):
     def test_baseline_computed_from_60s_window(self):
         now = time.time()
         samples = (
-            [(now - 70 + i, _sample(cpu=2.0, gpu=1.0)) for i in range(10)]  # before baseline
-            + [(now - 50 + i, _sample(cpu=8.0, gpu=4.0)) for i in range(10)]  # in baseline
+            [
+                (now - 70 + i, _sample(cpu=2.0, gpu=1.0)) for i in range(10)
+            ]  # before baseline
+            + [
+                (now - 50 + i, _sample(cpu=8.0, gpu=4.0)) for i in range(10)
+            ]  # in baseline
             + [(now - 0.5, _sample(cpu=10.0, gpu=5.0))]  # in prompt
         )
         m = _make_monitor(samples=samples)
@@ -683,6 +761,7 @@ class TestMeasurePowerLinux(unittest.TestCase):
         m = _make_monitor(samples=[(time.time() - 0.5, _sample())])
         del m._lock  # simulate old instance
         from greenprompt.sysUsage import measure_power_linux
+
         now = time.time()
         result = measure_power_linux(now - 0.3, now, m)
         self.assertIn("cpu_power_w", result)
@@ -708,14 +787,17 @@ class TestMeasurePowerLinux(unittest.TestCase):
 # 9. Architecture simulation — Intel RAPL end-to-end sampling
 # ===========================================================================
 
-class TestRaplEndToEnd(unittest.TestCase):
 
+class TestRaplEndToEnd(unittest.TestCase):
     def test_rapl_sampling_produces_nonzero_after_first_call(self):
         from greenprompt.samplerLinux import LinuxPowerMonitor
+
         fake_rapl = "/tmp/fake_energy_uj"
-        with patch("greenprompt.samplerLinux._detect_rapl_path", return_value=fake_rapl), \
-             patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}), \
-             patch("psutil.cpu_percent", return_value=[10.0] * 4):
+        with (
+            patch("greenprompt.samplerLinux._detect_rapl_path", return_value=fake_rapl),
+            patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}),
+            patch("psutil.cpu_percent", return_value=[10.0] * 4),
+        ):
             m = LinuxPowerMonitor()
 
         energy_values = iter([1_000_000, 3_000_000])  # 2J in 1s = 2W
@@ -729,8 +811,10 @@ class TestRaplEndToEnd(unittest.TestCase):
         with patch("builtins.open", fake_open), patch("time.time", return_value=t0):
             first = m._sample_cpu_rapl()  # sets baseline
 
-        with patch("builtins.open", fake_open), \
-             patch("time.time", return_value=t0 + 1.0):
+        with (
+            patch("builtins.open", fake_open),
+            patch("time.time", return_value=t0 + 1.0),
+        ):
             second = m._sample_cpu_rapl()
 
         self.assertEqual(first, 0.0)
@@ -741,10 +825,11 @@ class TestRaplEndToEnd(unittest.TestCase):
 # 10. API endpoint edge cases
 # ===========================================================================
 
-class TestApiEdgeCases(unittest.TestCase):
 
+class TestApiEdgeCases(unittest.TestCase):
     def setUp(self):
         from greenprompt.api import app
+
         app.config["TESTING"] = True
         self.client = app.test_client()
 
@@ -759,8 +844,9 @@ class TestApiEdgeCases(unittest.TestCase):
 
     def test_missing_json_body_returns_400(self):
         # Non-JSON content-type: get_json(silent=True) returns None → {} → prompt="" → 400
-        resp = self.client.post("/api/prompt", data="not json",
-                                content_type="text/plain")
+        resp = self.client.post(
+            "/api/prompt", data="not json", content_type="text/plain"
+        )
         self.assertEqual(resp.status_code, 400)
         self.assertIn("error", resp.get_json())
 
@@ -788,8 +874,10 @@ class TestApiEdgeCases(unittest.TestCase):
         self.assertIn(b"GreenPrompt", resp.data)
 
     def test_bad_model_returns_400(self):
-        with patch("greenprompt.api.run_prompt",
-                   side_effect=RuntimeError("model 'badmodel' not found")):
+        with patch(
+            "greenprompt.api.run_prompt",
+            side_effect=RuntimeError("model 'badmodel' not found"),
+        ):
             resp = self.client.post(
                 "/api/prompt",
                 json={"prompt": "hello", "model": "badmodel"},
@@ -798,8 +886,9 @@ class TestApiEdgeCases(unittest.TestCase):
         self.assertIn("error", resp.get_json())
 
     def test_internal_exception_returns_500(self):
-        with patch("greenprompt.api.run_prompt",
-                   side_effect=Exception("unexpected crash")):
+        with patch(
+            "greenprompt.api.run_prompt", side_effect=Exception("unexpected crash")
+        ):
             resp = self.client.post(
                 "/api/prompt",
                 json={"prompt": "hello", "model": "llama3.2:latest"},
@@ -811,6 +900,7 @@ class TestApiEdgeCases(unittest.TestCase):
     def test_concurrent_usage_all_requests(self):
         results = []
         errors = []
+
         def hit():
             try:
                 r = self.client.get("/api/usage/all")
@@ -832,20 +922,26 @@ class TestApiEdgeCases(unittest.TestCase):
 # 11. Stress: high-frequency sample_once calls (no crashes, no lock contention)
 # ===========================================================================
 
-class TestHighFrequencySampling(unittest.TestCase):
 
+class TestHighFrequencySampling(unittest.TestCase):
     def test_1000_sample_once_calls_no_crash(self):
         from greenprompt.samplerLinux import LinuxPowerMonitor
+
         def _cpu_pct(*args, **kwargs):
             return [15.0] * 4 if kwargs.get("percpu") else 15.0
-        with patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None), \
-             patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}), \
-             patch("psutil.cpu_percent", side_effect=_cpu_pct):
+
+        with (
+            patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None),
+            patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}),
+            patch("psutil.cpu_percent", side_effect=_cpu_pct),
+        ):
             m = LinuxPowerMonitor()
         m._dmon = None
         errors = []
-        with patch.object(m, "_check_gpu", return_value=False), \
-             patch("psutil.cpu_percent", side_effect=_cpu_pct):
+        with (
+            patch.object(m, "_check_gpu", return_value=False),
+            patch("psutil.cpu_percent", side_effect=_cpu_pct),
+        ):
             for _ in range(1000):
                 try:
                     result = m.sample_once()
@@ -857,9 +953,12 @@ class TestHighFrequencySampling(unittest.TestCase):
 
     def test_concurrent_sample_once_and_get_range(self):
         from greenprompt.samplerLinux import LinuxPowerMonitor
-        with patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None), \
-             patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}), \
-             patch("psutil.cpu_percent", return_value=[15.0] * 4):
+
+        with (
+            patch("greenprompt.samplerLinux._detect_rapl_path", return_value=None),
+            patch("greenprompt.samplerLinux._detect_cpu_clusters", return_value={}),
+            patch("psutil.cpu_percent", return_value=[15.0] * 4),
+        ):
             m = LinuxPowerMonitor()
         m._dmon = None
         errors = []
@@ -867,8 +966,10 @@ class TestHighFrequencySampling(unittest.TestCase):
 
         def sampler():
             while not stop.is_set():
-                with patch.object(m, "_check_gpu", return_value=False), \
-                     patch("psutil.cpu_percent", return_value=[15.0] * 4):
+                with (
+                    patch.object(m, "_check_gpu", return_value=False),
+                    patch("psutil.cpu_percent", return_value=[15.0] * 4),
+                ):
                     s = m.sample_once()
                 if s:
                     with m._lock:
@@ -883,8 +984,9 @@ class TestHighFrequencySampling(unittest.TestCase):
                     errors.append(e)
                 time.sleep(0.001)
 
-        threads = [threading.Thread(target=sampler)] + \
-                  [threading.Thread(target=ranger) for _ in range(3)]
+        threads = [threading.Thread(target=sampler)] + [
+            threading.Thread(target=ranger) for _ in range(3)
+        ]
         for t in threads:
             t.start()
         time.sleep(1.5)

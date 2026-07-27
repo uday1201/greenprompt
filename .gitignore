@@ -3,11 +3,13 @@ poetry.lock
 # Ignore Python cache files
 __pycache__/
 *.py[cod]
-# Ignore constant files
-**/constants.py
+# greenprompt/constants.py is a tracked source file and must NOT be ignored.
+# Machine-specific values live in ~/.greenprompt/config.json (see setup.py).
+# Stray constants.py files written by older versions into a working directory:
+/constants.py
 # Ignore DB files
 *.sqlite3
-*/*.db
+*.db
 # Ignore .log files
 *.log
 # Ignore dist folder

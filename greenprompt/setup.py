@@ -1,8 +1,24 @@
+"""
+setup.py — one-time GreenPrompt initialization.
+
+Run via `greenprompt setup`. Detects hardware, writes the user config file
+(~/.greenprompt/config.json by default — see constants.config_path()),
+configures passwordless sudo for powermetrics on macOS, downloads NLTK data,
+verifies Ollama, and creates the SQLite database.
+
+The config is written outside the package so that setup works from any
+directory and survives reinstalls. Platform values (OS, machine, etc.) are
+NOT persisted — constants.py derives those live on every import, so they can
+never go stale or leak one machine's identity into another's install.
+"""
+
 import glob
+import json
 import os
 import platform
+from greenprompt import constants
 from greenprompt.sysUsage import get_system_info
-from greenprompt.dbconn import init_db
+from greenprompt.dbconn import init_db, DB_PATH
 import subprocess
 import nltk
 
@@ -27,12 +43,50 @@ def download_nltk_data():
             print(f"Could not download NLTK resource '{resource}': {e}")
 
 
-def sanitize_key(key):
+def detect_cpu_power_source() -> str:
     """
-    Sanitize keys to make them valid Python variable names.
-    Replaces spaces and special characters with underscores.
+    Report whether direct CPU energy measurement is available on this machine.
+
+    Returns "rapl" when Intel/AMD RAPL sysfs counters are present (Linux only),
+    otherwise "estimated". Informational only — LinuxPowerMonitor performs its
+    own detection at startup.
     """
-    return key.upper().replace(" ", "_").replace("(", "").replace(")", "")
+    if platform.system() != "Linux":
+        return "estimated"
+    direct = "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj"
+    if os.path.exists(direct):
+        return "rapl"
+    if glob.glob("/sys/class/powercap/intel-rapl*/intel-rapl*:0/energy_uj"):
+        return "rapl"
+    return "estimated"
+
+
+def write_config(cpu_tdp_w: float, cpu_power_source: str) -> str:
+    """
+    Write the GreenPrompt user config file as JSON.
+
+    Merges onto any existing config so hand-edited values (e.g. a custom
+    OLLAMA_URL) are preserved across re-runs of setup.
+
+    Args:
+        cpu_tdp_w: Detected CPU TDP in watts.
+        cpu_power_source: "rapl" or "estimated".
+
+    Returns:
+        The path the config was written to.
+    """
+    path = constants.config_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    cfg = constants.load_config()
+    cfg.setdefault("OLLAMA_URL", OLLAMA_URL)
+    cfg["CPU_TDP_W"] = cpu_tdp_w
+    cfg["CPU_POWER_SOURCE"] = cpu_power_source
+
+    with open(path, "w") as f:
+        json.dump(cfg, f, indent=2, sort_keys=True)
+        f.write("\n")
+    return path
 
 
 def detect_cpu_tdp_w() -> float:
@@ -47,24 +101,28 @@ def detect_cpu_tdp_w() -> float:
     """
     try:
         import cpuinfo
+
         brand = cpuinfo.get_cpu_info().get("brand_raw", "").lower()
         # Known TDP estimates by CPU family
         tdp_map = [
-            ("cortex-x925", 23.0),   # 10-core P-cluster (NVIDIA Grace / Snapdragon X Elite)
-            ("cortex-a725",  8.0),   # 10-core E-cluster
-            ("cortex-x4",   30.0),
-            ("cortex-x3",   25.0),
-            ("cortex-x2",   20.0),
-            ("cortex-x1",   15.0),
-            ("a78",         10.0),
-            ("i9-",         65.0),
-            ("i7-",         45.0),
-            ("i5-",         35.0),
-            ("i3-",         25.0),
-            ("ryzen 9",     65.0),
-            ("ryzen 7",     45.0),
-            ("ryzen 5",     35.0),
-            ("apple m",     20.0),
+            (
+                "cortex-x925",
+                23.0,
+            ),  # 10-core P-cluster (NVIDIA Grace / Snapdragon X Elite)
+            ("cortex-a725", 8.0),  # 10-core E-cluster
+            ("cortex-x4", 30.0),
+            ("cortex-x3", 25.0),
+            ("cortex-x2", 20.0),
+            ("cortex-x1", 15.0),
+            ("a78", 10.0),
+            ("i9-", 65.0),
+            ("i7-", 45.0),
+            ("i5-", 35.0),
+            ("i3-", 25.0),
+            ("ryzen 9", 65.0),
+            ("ryzen 7", 45.0),
+            ("ryzen 5", 35.0),
+            ("apple m", 20.0),
         ]
         for keyword, tdp in tdp_map:
             if keyword in brand:
@@ -92,6 +150,7 @@ def configure_powermetrics_sudoers():
     sudoers_file = "/etc/sudoers.d/greenprompt"
     try:
         import pwd
+
         # Identify the real (non-root) user: SUDO_USER env var set by sudo
         real_user = os.environ.get("SUDO_USER") or pwd.getpwuid(os.getuid()).pw_name
         rule = f"{real_user} ALL=(ALL) NOPASSWD: {powermetrics_path}\n"
@@ -147,49 +206,22 @@ def check_ollama():
 def main():
     print("Setting up GreenPrompt...")
 
-    # Get system information
+    # Report detected hardware. Not persisted — constants.py derives platform
+    # values live, and get_system_info() is recorded per-prompt in the database.
     system_info = get_system_info()
+    print(
+        f"Detected: {system_info['OS']} / {system_info['Machine']} / "
+        f"{system_info['CPU']} ({system_info['CPU Cores (Total)']} cores)"
+    )
 
-    # Run git update-index to hide constants.py
-    try:
-        subprocess.run(
-            [
-                "git",
-                "update-index",
-                "--no-assume-unchanged",
-                "greenprompt/constants.py",
-            ],
-            check=True,
-        )
-        print("Updated git index to track changes to constants.py.")
-    except Exception as e:
-        print(f"Could not update git index: {e}")
-
-    # Save system information to constants.py
-    constants_py_path = os.path.join(os.getcwd(), "constants.py")
+    # Write tunables to the user config file that constants.py reads.
     cpu_tdp_w = detect_cpu_tdp_w()
-
-    # Detect CPU power measurement source for informational display
-    cpu_power_source = "estimated"
-    if platform.system() == "Linux":
-        rapl_files = glob.glob("/sys/class/powercap/intel-rapl*/intel-rapl*:0/energy_uj")
-        direct_rapl = "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj"
-        if rapl_files or os.path.exists(direct_rapl):
-            cpu_power_source = "rapl"
-
-    with open(constants_py_path, "w") as py_file:
-        py_file.write("# Auto-generated constants file\n")
-        for key, value in system_info.items():
-            sanitized_key = sanitize_key(key)
-            py_file.write(f"{sanitized_key} = {repr(value)}\n")
-        # Add ollama URL
-        py_file.write(f"OLLAMA_URL = {repr(OLLAMA_URL)}\n")
-        # CPU TDP estimate used by LinuxPowerMonitor in linear_tdp fallback mode.
-        # In arm_biglittle or rapl mode this value is not used for sampling.
-        py_file.write(f"CPU_TDP_W = {cpu_tdp_w}\n")
-        # Informational: 'rapl' (Intel/AMD direct measurement) or 'estimated' (ARM/other)
-        py_file.write(f"CPU_POWER_SOURCE = {repr(cpu_power_source)}\n")
-    print(f"✅ System information saved to {constants_py_path} (CPU_TDP_W={cpu_tdp_w}W, CPU_POWER_SOURCE={cpu_power_source!r})")
+    cpu_power_source = detect_cpu_power_source()
+    config_file = write_config(cpu_tdp_w, cpu_power_source)
+    print(
+        f"✅ Config written to {config_file} "
+        f"(CPU_TDP_W={cpu_tdp_w}W, CPU_POWER_SOURCE={cpu_power_source!r})"
+    )
 
     # On macOS, configure passwordless sudo for powermetrics so `greenprompt run`
     # works without sudo after this one-time setup.
@@ -203,8 +235,10 @@ def main():
     # Check if Ollama is installed
     check_ollama()
 
-    # Initialize the database and create tables
+    # Initialize the database and create tables. DB_PATH is relative to the
+    # current working directory, so tell the user exactly where it landed.
     init_db()
+    print(f"✅ Database ready at {DB_PATH}")
 
 
 if __name__ == "__main__":
