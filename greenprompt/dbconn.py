@@ -21,6 +21,32 @@ from greenprompt.sysUsage import get_system_info
 # Path to the SQLite database file
 DB_PATH = os.path.join(os.getcwd(), "greenprompt_usage.db")
 
+#: Column order of the prompt_usage table. Kept beside init_db() so callers
+#: that need the shape of an empty result set (e.g. analytics.load_usage_data
+#: building a DataFrame with no rows) stay in sync with the schema.
+PROMPT_USAGE_COLUMNS = (
+    "id",
+    "timestamp",
+    "prompt",
+    "prompt_score",
+    "prompt_score_details",
+    "response",
+    "model",
+    "prompt_tokens",
+    "completion_tokens",
+    "total_tokens",
+    "energy_estimate_prompt",
+    "energy_estimate_tokens",
+    "duration_sec",
+    "energy_wh",
+    "baseline_power_w",
+    "baseline_energy_wh",
+    "cpu_power_w",
+    "gpu_power_w",
+    "combined_power_w",
+    "system_info",
+)
+
 
 def get_connection():
     """
@@ -34,6 +60,11 @@ def get_connection():
 def init_db():
     """
     Initializes the database and creates the prompt_usage table.
+
+    Idempotent — uses CREATE TABLE IF NOT EXISTS, so it is safe to call on
+    every read/write path. save_prompt_usage() and get_prompt_usage() both
+    call it so that a fresh working directory never raises
+    "no such table: prompt_usage".
     """
     conn = get_connection()
     cursor = conn.cursor()
@@ -78,6 +109,7 @@ def save_prompt_usage(data: dict):
     """
     Saves a prompt usage record to the prompt_usage table.
     """
+    init_db()
     conn = get_connection()
     cursor = conn.cursor()
     system_info = json.dumps(get_system_info())
@@ -130,9 +162,7 @@ def get_prompt_usage(start_time=None, end_time=None, model=None):
         all prompt_usage columns. system_info and prompt_score_details are
         JSON strings; callers must parse with json.loads if needed.
     """
-    """
-    Retrieve prompt_usage entries filtered by optional ISO timestamp range and model.
-    """
+    init_db()
     conn = get_connection()
     cursor = conn.cursor()
     query = "SELECT * FROM prompt_usage"
