@@ -21,7 +21,7 @@ This separation lets `PowerMonitor` accumulate a warm 10-minute power history be
 | `dbconn.py` | SQLite schema, CRUD | All other concerns |
 | `samplerMac.py` | macOS power sampling thread | Parsing (delegates to sysUsage) |
 | `samplerLinux.py` | Linux power sampling thread — RAPL / ARM / TDP mode detection, `nvidia-smi dmon` | Parsing (delegates to sysUsage) |
-| `sysUsage.py` | OS detection, power measurement dispatch, parsing | Threading, storage |
+| `sysUsage.py` | OS detection, power measurement dispatch, parsing, system metadata (never raises; cached) | Threading, storage |
 | `scoreBasic.py` | NLTK-based prompt scoring, on-demand corpora fetch | LLM calls; any I/O beyond fetching missing corpora |
 | `analytics.py` | Plotly figure construction | Data loading (delegates to dbconn) |
 | `setup.py` | First-run initialization | Runtime operations |
