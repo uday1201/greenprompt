@@ -53,11 +53,12 @@ If you encounter bugs or have feature requests, please open an issue using the p
 
 ## Releasing
 
-Releases are cut from `main` by a maintainer, using `scripts/release.py`. It
-does the mechanical work — version arithmetic, the `pyproject.toml` rewrite,
-promoting the CHANGELOG's `## [Unreleased]` section, the commit, the annotated
-tag, and the push — behind a set of preconditions that all run *before*
-anything is written.
+Releases are cut from `main` by a maintainer, using `scripts/release.py`, in two
+phases.
+
+**Phase one** works out the next version, rewrites `pyproject.toml`, promotes
+the CHANGELOG's `## [Unreleased]` section, and opens a pull request — behind a
+set of preconditions that all run *before* anything is written:
 
 ```bash
 python scripts/release.py patch      # 0.2.0 -> 0.2.1
@@ -66,9 +67,21 @@ python scripts/release.py major      # 0.2.0 -> 1.0.0
 python scripts/release.py 0.4.2      # explicit version
 ```
 
+**Phase two**, once that pull request is merged, tags the release:
+
+```bash
+python scripts/release.py --tag 0.3.0
+```
+
 Pushing the tag is what starts `.github/workflows/publish.yaml`, which verifies,
 builds, publishes to PyPI via Trusted Publishing (OIDC — there is no API token),
 and cuts a GitHub Release with the built artifacts attached.
+
+> **Why two phases?** The repository's ruleset requires a pull request for any
+> change to `main`. A direct `git push origin main` is rejected even for a
+> maintainer with bypass rights, so the version bump has to travel through a
+> pull request like any other change. Branch rulesets do not apply to tags,
+> which is why phase two can push directly.
 
 To rehearse the whole pipeline without releasing anything:
 
@@ -102,6 +115,12 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) headings (`Added`,
 `Changed`, `Fixed`, `Removed`). The release script moves that section under the
 new version heading and opens a fresh empty one, so the notes are written
 incrementally rather than reconstructed from `git log` at release time.
+
+### Phase two refuses to tag if
+
+- `main` is not at the version you asked for (the release PR is unmerged)
+- the tag already exists locally or on the remote
+- the version is already on PyPI
 
 ### One-time setup
 

@@ -2,10 +2,10 @@
 """
 release.py — cut a GreenPrompt release.
 
-Automates the mechanical half of a release: work out the next version, write it
-to pyproject.toml, promote the CHANGELOG's Unreleased section, commit, tag, and
-push. Pushing the tag is what starts .github/workflows/publish.yaml, which
-builds, verifies, and publishes to PyPI via Trusted Publishing.
+Automates the mechanical half of a release in two phases.
+
+Phase one works out the next version, writes it to pyproject.toml, promotes the
+CHANGELOG's Unreleased section, and opens a pull request:
 
     python scripts/release.py patch          # 0.2.0 -> 0.2.1
     python scripts/release.py minor          # 0.2.0 -> 0.3.0
@@ -13,11 +13,17 @@ builds, verifies, and publishes to PyPI via Trusted Publishing.
     python scripts/release.py 0.4.2          # explicit
     python scripts/release.py minor --rehearse   # dry-run the pipeline, change nothing
 
-Why a script and not a workflow: the repository's `Main` ruleset requires pull
-requests with two approvals, and its bypass is granted to a repository role
-rather than to github-actions[bot]. A workflow that pushed a version bump to
-main would be rejected; a maintainer with bypass rights running this locally is
-not.
+Phase two, once that pull request is merged, tags the release. Pushing the tag
+is what starts .github/workflows/publish.yaml, which builds, verifies, and
+publishes to PyPI via Trusted Publishing:
+
+    python scripts/release.py --tag 0.3.0
+
+Two phases rather than one because the repository's ruleset requires pull
+requests for changes to main. A direct `git push origin main` is rejected even
+for a maintainer with bypass rights, so the version bump has to travel through
+a pull request like any other change. Tags are unaffected — branch rulesets do
+not apply to them — which is why phase two can push directly.
 
 Every check that can fail runs *before* anything is written, because a PyPI
 version number can never be reused once published.
@@ -216,6 +222,40 @@ def preflight(new_version: str, skip_tests: bool):
     run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-t", "."])
 
 
+def tag_release(version):
+    """
+    Tag an already-merged release commit and push, which starts publish.yaml.
+
+    Separate from preparing the release because the repository requires pull
+    requests for changes to main: the version bump cannot be pushed directly,
+    so tagging necessarily happens after that pull request is merged. Branch
+    rulesets do not apply to tags, so this push succeeds where a direct branch
+    push would be rejected.
+    """
+    tag = f"v{version}"
+    run(["git", "fetch", "origin", RELEASE_BRANCH, "--tags", "--quiet"])
+    run(["git", "checkout", RELEASE_BRANCH])
+    run(["git", "reset", "--hard", f"origin/{RELEASE_BRANCH}"])
+
+    on_main = read_version(PYPROJECT.read_text())
+    if on_main != version:
+        raise ReleaseError(
+            f"{RELEASE_BRANCH} is at version {on_main}, not {version} — "
+            f"has the release pull request been merged?"
+        )
+    if run(["git", "tag", "--list", tag]) or run(
+        ["git", "ls-remote", "--tags", "origin", tag]
+    ):
+        raise ReleaseError(f"Tag {tag} already exists")
+    if version in published_versions():
+        raise ReleaseError(f"{PACKAGE} {version} is already on PyPI")
+
+    run(["git", "tag", "-a", tag, "-m", tag])
+    run(["git", "push", "origin", tag])
+    print(f"Pushed {tag}. The release pipeline is running:")
+    print(f"  https://github.com/{REPO}/actions/workflows/publish.yaml")
+
+
 def rehearse():
     """Trigger the publish workflow in dry-run mode and exit without changes."""
     print("Triggering a dry run of publish.yaml on main…")
@@ -241,7 +281,16 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    ap.add_argument("spec", help="major | minor | patch | explicit X.Y.Z version")
+    ap.add_argument(
+        "spec",
+        nargs="?",
+        help="major | minor | patch | explicit X.Y.Z version",
+    )
+    ap.add_argument(
+        "--tag",
+        metavar="X.Y.Z",
+        help="tag an already-merged release commit and publish (phase two)",
+    )
     ap.add_argument(
         "--rehearse",
         action="store_true",
@@ -261,9 +310,16 @@ def main() -> int:
     args = ap.parse_args()
 
     try:
+        if args.tag:
+            tag_release(args.tag)
+            return 0
+
         if args.rehearse:
             rehearse()
             return 0
+
+        if not args.spec:
+            ap.error("a bump level or version is required unless --tag is used")
 
         pyproject_text = PYPROJECT.read_text()
         current = read_version(pyproject_text)
@@ -296,17 +352,38 @@ def main() -> int:
         PYPROJECT.write_text(set_version(pyproject_text, new_version))
         CHANGELOG.write_text(changelog_text)
 
+        branch = f"release/v{new_version}"
+        run(["git", "checkout", "-b", branch])
         run(["git", "add", str(PYPROJECT), str(CHANGELOG)])
         run(["git", "commit", "-m", f"chore(release): {new_version}"])
-        run(["git", "tag", "-a", tag, "-m", f"{tag}\n\n{notes}"])
-        run(["git", "push", "origin", RELEASE_BRANCH])
-        run(["git", "push", "origin", tag])
+        run(["git", "push", "-u", "origin", branch])
 
-        print(f"\nPushed {tag}. The release pipeline is running:")
-        print(f"  https://github.com/{REPO}/actions/workflows/publish.yaml")
-        print(
-            "  gh run watch $(gh run list --workflow publish.yaml --limit 1 --json databaseId --jq '.[0].databaseId')"
+        body = (
+            f"Prepares the {new_version} release: version bump and CHANGELOG "
+            f"promotion, generated by `scripts/release.py`.\n\n"
+            f"Merging this does **not** publish. Once it is on `{RELEASE_BRANCH}`, "
+            f"run:\n\n```bash\npython scripts/release.py --tag {new_version}\n```"
+            f"\n\n---\n\n{notes}"
         )
+        run(
+            [
+                "gh",
+                "pr",
+                "create",
+                "--base",
+                RELEASE_BRANCH,
+                "--head",
+                branch,
+                "--title",
+                f"chore(release): {new_version}",
+                "--body",
+                body,
+            ]
+        )
+
+        print(f"\nOpened a release pull request for {new_version}.")
+        print("  Merge it, then tag with:")
+        print(f"    python scripts/release.py --tag {new_version}")
         return 0
 
     except ReleaseError as e:
