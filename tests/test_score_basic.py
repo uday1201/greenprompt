@@ -11,8 +11,9 @@ Two things are pinned here:
     including `--help` attempted four network round-trips before printing
     anything. Downloads must now happen on demand and only when data is
     genuinely missing.
-  * **Scoring behaviour.** The dimension set, the score arithmetic, and the
-    ordering property that a well-formed prompt outscores a bare one.
+  * **Scoring behaviour.** The dimension set, the score arithmetic, the
+    ordering property that a well-formed prompt outscores a bare one, and that
+    a bare imperative is credited regardless of which verb opens it.
 """
 
 import importlib
@@ -225,22 +226,114 @@ class TestHelpers(unittest.TestCase):
         verbs = [v.lower() for v in scoreBasic.get_verbs("Please explain inertia.")]
         self.assertIn("explain", verbs)
 
-    def test_get_verbs_misses_a_bare_imperative(self):
+    def test_bare_imperatives_are_detected(self):
         """
-        Documents a real limitation of the scorer, not desired behaviour.
-
-        NLTK's POS tagger labels the leading word of a bare imperative as a
-        noun — "Explain inertia." tags "Explain" as NNP — so get_verbs() finds
-        nothing. Since imperatives are the most natural way to write a prompt,
-        this costs those prompts credit on Instructional Tone and on the task
-        half of RTCF Structure.
-
-        Out of scope for the correctness pass this file accompanies. Pinned so
-        the behaviour is visible and any future fix surfaces as a failure here.
+        Every one of these returned no verbs before the imperative fix, so the
+        prompt lost 3 points on Instructional Tone and 1 on RTCF Structure.
         """
-        self.assertEqual(scoreBasic.get_verbs("Explain inertia."), [])
-        bare = scoreBasic.score_prompt("Explain inertia.")
-        self.assertEqual(bare["details"]["Instructional Tone"], 0)
+        for prompt, verb in [
+            ("Explain inertia.", "explain"),
+            ("List three benefits of solar energy.", "list"),
+            ("Generate five ideas.", "generate"),
+            ("Define entropy.", "define"),
+            ("Summarize this article.", "summarize"),
+            ("Write a haiku about the sea.", "write"),
+        ]:
+            with self.subTest(prompt=prompt):
+                self.assertIn(verb, [v.lower() for v in scoreBasic.get_verbs(prompt)])
+                details = scoreBasic.score_prompt(prompt)["details"]
+                self.assertEqual(details["Instructional Tone"], 3)
+                self.assertGreaterEqual(details["RTCF Structure"], 1)
+
+    def test_imperative_detection_is_verb_independent(self):
+        """
+        The defect was that crediting depended on *which* verb opened the
+        prompt. Two prompts of identical structure must now score identically.
+        """
+        a = scoreBasic.score_prompt("Summarize this article.")  # tagger got this right
+        b = scoreBasic.score_prompt("Explain this article.")  # tagger got this wrong
+        self.assertEqual(
+            a["details"]["Instructional Tone"], b["details"]["Instructional Tone"]
+        )
+        self.assertEqual(a["details"]["RTCF Structure"], b["details"]["RTCF Structure"])
+
+    def test_non_imperative_openings_are_not_credited_as_tasks(self):
+        # A question is not a task; the imperative path must not fire.
+        self.assertFalse(scoreBasic.has_explicit_task("What is inertia?"))
+        self.assertFalse(scoreBasic.has_explicit_task("The cat sat on the mat."))
+
+    def test_imperative_is_found_in_a_later_sentence(self):
+        verbs = [
+            v.lower() for v in scoreBasic.get_verbs("You are a tutor. Explain inertia.")
+        ]
+        self.assertIn("explain", verbs)
+
+    def test_imperative_is_found_after_a_newline(self):
+        verbs = [
+            v.lower()
+            for v in scoreBasic.get_verbs("Context: physics\nList three laws.")
+        ]
+        self.assertIn("list", verbs)
+
+    def test_verbs_are_not_duplicated(self):
+        # "Summarize" is found by both the tagger and the imperative pass.
+        verbs = [v.lower() for v in scoreBasic.get_verbs("Summarize this article.")]
+        self.assertEqual(len(verbs), len(set(verbs)))
+
+    def test_sentence_initial_noun_is_not_treated_as_a_verb(self):
+        self.assertEqual(
+            scoreBasic._sentence_initial_imperatives("Inertia is a concept."), []
+        )
+
+    def test_known_false_positive_is_accepted(self):
+        """
+        Documents an accepted trade rather than desired behaviour: a
+        sentence-initial noun that is spelled like an instruction verb is
+        credited. The alternative — parsing well enough to tell them apart —
+        is not available to a regex-and-POS scorer.
+        """
+        self.assertEqual(
+            scoreBasic._sentence_initial_imperatives("List of items follows."), ["List"]
+        )
+
+    def test_empty_and_punctuation_only_text_is_safe(self):
+        for text in ("", "   ", "...", "!?"):
+            with self.subTest(text=text):
+                self.assertEqual(scoreBasic._sentence_initial_imperatives(text), [])
+
+    def test_task_detection_uses_the_shared_vocabulary(self):
+        # has_explicit_task must not keep a private list that can drift.
+        self.assertTrue(scoreBasic.has_explicit_task("Refactor this function."))
+        self.assertIn("refactor", scoreBasic.INSTRUCTION_VERBS)
+
+    def test_instruction_verbs_are_all_lowercase(self):
+        # Lookups are done on .lower(), so an uppercase entry would be dead.
+        for verb in scoreBasic.INSTRUCTION_VERBS:
+            with self.subTest(verb=verb):
+                self.assertEqual(verb, verb.lower())
+
+    def test_original_core_task_verbs_are_all_retained(self):
+        """The pre-existing vocabulary must not have been lost in the merge."""
+        original = {
+            "summarize",
+            "list",
+            "explain",
+            "describe",
+            "define",
+            "compare",
+            "generate",
+            "analyze",
+            "write",
+            "compose",
+            "translate",
+            "solve",
+            "classify",
+            "extract",
+            "categorize",
+            "review",
+            "evaluate",
+        }
+        self.assertTrue(original.issubset(scoreBasic.INSTRUCTION_VERBS))
 
 
 if __name__ == "__main__":

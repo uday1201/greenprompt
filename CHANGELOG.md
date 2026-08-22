@@ -6,6 +6,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Prompt scores are higher for prompts that open with a bare imperative.**
+  `get_verbs()` relied solely on NLTK POS tagging, which labels a capitalised
+  sentence-opening verb as a proper noun often enough that whether a prompt was
+  credited depended on which verb it started with: `Summarize this article.`
+  scored 3 for Instructional Tone while `Explain inertia.`, `List three
+  benefits.`, `Generate five ideas.` and `Define entropy.` scored 0, losing 4
+  of 50 points overall. Sentence-initial instruction verbs are now recognised
+  directly, and `has_explicit_task()` shares that one vocabulary
+  (`INSTRUCTION_VERBS`) instead of keeping a private list.
+
+  Rows already in the database keep their recorded scores, so comparisons that
+  straddle this release are not like-for-like. The accepted trade is that a
+  sentence-initial noun spelled like an instruction verb (`List of items`) is
+  now credited as a task.
+
 ### Fixed
 
 - `run_prompt()` called `score_prompt()` twice to populate two adjacent fields,

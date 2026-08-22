@@ -44,11 +44,25 @@ Checks for the four foundational prompt components.
 | Element | Detection | Example trigger |
 |---|---|---|
 | **Role** | Regex: `you are (a/an/the)? <word>`, `pretend to be`, `act as`, `role:` | `"You are a physics expert."` |
-| **Task** | POS tag: any imperative verb in the core verb list | `"Explain"`, `"Summarize"`, `"List"` |
+| **Task** | An instruction verb, found by POS tagging or as a sentence opener | `"Explain"`, `"Summarize"`, `"List"` |
 | **Context** | Regex: `context:`, `background:`, `for <word>`, `audience:` | `"Context: audience is a beginner."` |
 | **Format** | Regex: `format:`, `output as`, or content-type words | `"Format: bullet points."` |
 
-**Core task verbs recognized:** `summarize`, `list`, `explain`, `describe`, `define`, `compare`, `generate`, `analyze`, `write`, `compose`, `translate`, `solve`, `classify`, `extract`, `categorize`, `review`, `evaluate`
+**Instruction verbs recognized** (`scoreBasic.INSTRUCTION_VERBS`) — one shared
+vocabulary used both for detecting a task and for recognising a sentence-initial
+imperative:
+
+`analyze`, `answer`, `build`, `calculate`, `categorize`, `check`, `classify`,
+`compare`, `compose`, `compute`, `convert`, `count`, `create`, `critique`,
+`debug`, `define`, `demonstrate`, `derive`, `describe`, `design`, `draft`,
+`elaborate`, `estimate`, `evaluate`, `expand`, `explain`, `explore`, `extract`,
+`find`, `fix`, `format`, `generate`, `give`, `group`, `identify`, `illustrate`,
+`implement`, `improve`, `interpret`, `introduce`, `justify`, `label`, `list`,
+`make`, `name`, `outline`, `plan`, `predict`, `produce`, `prove`, `provide`,
+`rank`, `recommend`, `refactor`, `rephrase`, `review`, `rewrite`, `revise`,
+`score`, `search`, `show`, `simplify`, `simulate`, `solve`, `sort`, `suggest`,
+`summarize`, `tell`, `test`, `transform`, `translate`, `validate`, `verify`,
+`write`
 
 ---
 
@@ -106,28 +120,32 @@ Detected by: `format:`, `output as`, or any of `table`, `bullets`, `list`, `json
 
 ### 6. Instructional Tone (0 or 3 pts)
 
-Detected by NLTK POS tagging: any token tagged as a verb (`VB*`) in the prompt.
+Detected in two passes:
 
-> **Caveat — sentence-initial imperatives are detected unreliably.** NLTK's
-> tagger frequently labels a capitalised sentence-opening verb as a proper noun
-> (`NNP`) instead. Which words are affected is not predictable:
->
-> | Prompt | Verbs found | Instructional Tone |
-> |---|---|---|
-> | `Summarize this article.` | `Summarize` | 3 |
-> | `Write a haiku about the sea.` | `Write` | 3 |
-> | `Explain inertia.` | *(none)* | 0 |
-> | `List three benefits of solar energy.` | *(none)* | 0 |
->
-> Since a bare imperative is the most natural way to write a prompt, affected
-> prompts silently lose 3 points here and 1 more on the Task element of RTCF
-> Structure — 4 of 50, or 8% of the total.
->
-> Giving the verb a preceding word avoids the misfire (`Please explain
-> inertia.` scores 3), as does leading with a role (`You are a physics tutor.
-> Explain inertia.`). This is a limitation of the tagger, not a deliberate
-> scoring rule, and is pinned by a test in `tests/test_score_basic.py` so that
-> a future fix is visible.
+1. **POS tagging** — any token NLTK tags as a verb (`VB*`).
+2. **Sentence-initial instruction verbs** — the first word of any sentence that
+   appears in `INSTRUCTION_VERBS`, whether or not the tagger agreed.
+
+The second pass exists because the tagger labels a capitalised sentence-opening
+verb as a proper noun often enough to matter. Before it was added, whether a
+prompt was credited depended on which verb it happened to start with:
+
+| Prompt | Before | Now |
+|---|---|---|
+| `Summarize this article.` | 3 | 3 |
+| `Write a haiku about the sea.` | 3 | 3 |
+| `Explain inertia.` | **0** | 3 |
+| `List three benefits of solar energy.` | **0** | 3 |
+| `Generate five ideas.` | **0** | 3 |
+| `Define entropy.` | **0** | 3 |
+
+Lowercasing before tagging and prepending a sentinel word were both measured
+first; each fixes some verbs and breaks others. Matching a known vocabulary is
+the only approach that behaves consistently.
+
+The trade-off is a heuristic that occasionally fires on a noun — `List of
+items follows.` is credited — which is acceptable in a scorer that already
+relies on regex matching throughout.
 
 ---
 
@@ -339,11 +357,9 @@ For instance: {"trend": "Q3 spike", "evidence": "up 40%", "recommendation": "inv
 
 ## Limitations
 
-- **Sentence-initial imperatives are often missed.** NLTK's tagger labels the
-  leading verb of `Explain inertia.` or `List three benefits.` as a proper
-  noun, costing those prompts 4 of 50 points. See dimension 6 above. This is
-  the most impactful limitation, because it affects the most natural way to
-  phrase a prompt.
+- A sentence-initial word spelled like an instruction verb is credited as one,
+  so `List of items follows.` scores as a task. This is the accepted cost of
+  working around NLTK's mis-tagging of imperatives; see dimension 6.
 - Role detection requires common English patterns (`you are`, `act as`, `role:`). Custom persona phrasing may not be detected.
 - Keyword matching is literal, so near-synonyms are missed — `energy usage`
   earns Energy Awareness points but `energy consumption` does not.
