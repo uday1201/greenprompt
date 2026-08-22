@@ -36,7 +36,7 @@ GreenPrompt is a local-first tool that intercepts Ollama LLM calls, measures CPU
 - **Token tracking** — Records prompt tokens, completion tokens, and total tokens per run from Ollama's response metadata.
 - **Dual estimation** — Provides both hardware-measured power and token-based estimates for cross-validation and offline comparison.
 - **Persistent logging** — Stores all run data in a local SQLite database (`greenprompt_usage.db`).
-- **Prompt quality scoring** — Automatically scores every prompt on 18 dimensions using offline NLTK heuristics (RTCF structure, clarity, conciseness, energy awareness, and more).
+- **Prompt quality scoring** — Automatically scores every prompt on 18 dimensions using offline NLTK heuristics (RTCF structure, clarity, conciseness, energy awareness, and more). No LLM call, and no network access once the corpora are present.
 - **Interactive dashboard** — Plotly-powered web dashboard with 6 chart types: energy timeline, CPU/GPU breakdown, model comparison, estimated vs. actual, and baseline overlay.
 - **REST API** — Flask server exposing endpoints for running prompts and querying usage history.
 - **Ollama proxy** — Optional transparent reverse proxy to intercept existing Ollama traffic without code changes.
@@ -147,6 +147,10 @@ greenprompt run [--port PORT]
 
 > **Note:** Wait 10–15 seconds after starting before sending the first prompt, so the sampler has collected enough readings to average over.
 
+If a GreenPrompt server is already running on the port, it is stopped and
+replaced. If the port is held by anything *else*, `run` reports it and refuses
+to start rather than killing it — pick another port with `--port`.
+
 | Flag | Default | Description |
 |---|---|---|
 | `--port` | `5000` | Port for the Flask server |
@@ -255,7 +259,11 @@ greenprompt dashboard
 
 ### `greenprompt stop`
 
-Stops the Flask API server by killing the process on the given port.
+Stops the GreenPrompt API server listening on the given port.
+
+Only processes identified as GreenPrompt API servers are signalled — anything
+else listening on that port is reported and left alone. The signal is `SIGTERM`,
+so the power sampler shuts down cleanly.
 
 ```bash
 greenprompt stop [--port PORT]
@@ -282,6 +290,17 @@ greenprompt log_api [--follow]
 ---
 
 ## REST API
+
+All endpoints are served by `greenprompt run` on `http://localhost:<port>`.
+
+> **Serving behind an external WSGI server:** use the application factory, not
+> the bare `app` object. `greenprompt.api:app` deliberately starts no power
+> sampler, so serving it directly records `energy_wh = 0` for every prompt with
+> no error at all:
+>
+> ```bash
+> gunicorn 'greenprompt.api:create_app()'
+> ```
 
 The GreenPrompt Flask server exposes the following endpoints after `greenprompt run`.
 
@@ -405,7 +424,7 @@ The scorer is entirely offline — no API call is made. It uses NLTK POS tagging
 | Evaluation & Validation | 2 | Matches `double-check`, `verify`, `validate`, `cross-check` |
 | Sensitivity & Inclusivity | 2 | Matches `inclusive`, `avoid bias`, `unbiased`, `sensitive to` |
 | Efficiency & Sustainability | 2 | Matches `concise`, `briefly`, `max N words`, `minimize tokens` |
-| Energy Awareness | 2 | Matches `energy usage`, `carbon`, `footprint`, `sustainable`, `green` |
+| Energy Awareness | 2 | Matches `energy usage`, `carbon`, `footprint`, `sustainable`, `green` (literal — `energy consumption` does not match) |
 | Keyword Richness | 2 | ≥5 unique non-stopword tokens = 2; ≥2 = 1; else 0 |
 
 See [docs/prompt-scoring.md](docs/prompt-scoring.md) for full details and optimization examples.
@@ -417,7 +436,7 @@ See [docs/prompt-scoring.md](docs/prompt-scoring.md) for full details and optimi
 ```
 greenprompt/
 ├── cli.py           Entry point — argparse subcommands, starts API subprocess
-├── api.py           Flask server — REST endpoints, Ollama proxy, power monitor init
+├── api.py           Flask server — REST endpoints, Ollama proxy, create_app() factory
 ├── core.py          run_prompt() — orchestrates Ollama call, power measurement, scoring
 ├── dbconn.py        SQLite — init_db, save_prompt_usage, get_prompt_usage
 ├── samplerMac.py    PowerMonitor — daemon thread sampling powermetrics every second
@@ -429,6 +448,18 @@ greenprompt/
 ├── setup.py         Setup routine — writes ~/.greenprompt/config.json, DB init, NLTK download
 └── templates/
     └── dashboard.html   Dashboard HTML with embedded Plotly JS
+
+scripts/
+└── release.py       Release automation — version bump, CHANGELOG, tag, push
+
+tests/               207 tests, standard-library unittest
+├── test_core.py            Energy estimation, model matching, run_prompt
+├── test_dbconn.py          Timestamp format, persistence, filters
+├── test_cli.py             Server lifecycle and process-ownership safety
+├── test_api_lifecycle.py   Power monitor startup and the WSGI factory
+├── test_score_basic.py     Scoring contract, behaviour, lazy corpora
+├── test_linux_stress.py    Linux sampler — arch simulation and edge cases
+└── test_release.py         Release script version and CHANGELOG logic
 ```
 
 ### Request Flow
@@ -555,6 +586,39 @@ Check which mode the sampler chose — `greenprompt log_api` reports it at start
 
 Live power sampling is not yet implemented on Windows. The `energy_estimate_tokens` field provides a token-count-based approximation.
 
+**Power readings are all zero behind gunicorn / uwsgi**
+
+The app was served as `greenprompt.api:app`, which starts no power sampler. Use
+the factory instead:
+```bash
+gunicorn 'greenprompt.api:create_app()'
+```
+
+**`Port 5000 is in use by another process (PID …). Not starting.`**
+
+Something that is not a GreenPrompt server is listening on that port —
+frequently AirPlay Receiver on macOS, which claims 5000. GreenPrompt will not
+kill an unrecognised process, so either free the port or choose another one:
+```bash
+greenprompt run --port 5050
+greenprompt prompt "..." --port 5050
+greenprompt dashboard --port 5050
+```
+
+**`Refusing to kill PID … : it is not a GreenPrompt API server.`**
+
+`greenprompt stop` found something else on that port. This is a safeguard, not
+a failure — check what it is with `lsof -nP -iTCP:<port> -sTCP:LISTEN` before
+deciding what to do.
+
+**My prompt scores lower than I expect**
+
+Prompts that open with a bare imperative — `Explain inertia.`, `List three
+benefits.` — are often missed by NLTK's part-of-speech tagger, which labels the
+leading verb as a proper noun. That costs 4 of 50 points. Leading with a role
+(`You are a physics tutor. Explain …`) both scores better and avoids the
+misfire. See [docs/prompt-scoring.md](docs/prompt-scoring.md#limitations).
+
 **Dashboard shows no data**
 
 The database is either empty or was created in a different working directory. Check:
@@ -578,11 +642,19 @@ git checkout -b feature/your-feature
 poetry install
 # make changes
 poetry run ruff check .
-poetry run ruff fmt .
+poetry run ruff format .
+# run the test suite from a scratch directory (the DB path is CWD-relative)
+mkdir -p /tmp/gp-test && cd /tmp/gp-test
+python -m unittest discover -s "$OLDPWD/tests" -t "$OLDPWD"
+cd "$OLDPWD"
 git commit -m "feat(scope): description"
 git push origin feature/your-feature
-# open pull request
+# open a pull request — CI runs on the PR, not on a bare branch push
 ```
+
+Releases are cut with `python scripts/release.py <major|minor|patch>`, which
+handles the version bump, CHANGELOG promotion, tag, and push. See the
+[Releasing section of CONTRIBUTING.md](CONTRIBUTING.md#releasing).
 
 ### Roadmap
 

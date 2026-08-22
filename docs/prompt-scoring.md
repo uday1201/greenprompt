@@ -17,6 +17,12 @@ Or via API (score is included in every `/api/prompt` response):
 
 The scorer is entirely **offline** — it uses NLTK POS tagging and regex heuristics. No LLM call is made. Typical latency is under 50ms.
 
+The one exception is data: the NLTK corpora the scorer depends on are fetched
+on first use if they are not already present. `greenprompt setup` downloads
+them up front, so in normal use the first score is the only moment any network
+access could occur, and none at all if setup has run. Nothing is fetched at
+import time — that used to happen on every CLI invocation, `--help` included.
+
 ---
 
 ## Scoring Framework
@@ -100,9 +106,28 @@ Detected by: `format:`, `output as`, or any of `table`, `bullets`, `list`, `json
 
 ### 6. Instructional Tone (0 or 3 pts)
 
-Detected by NLTK POS tagging: any verb tagged as a verb (`VB`) in the prompt.
+Detected by NLTK POS tagging: any token tagged as a verb (`VB*`) in the prompt.
 
-This captures imperative verbs (`List`, `Explain`, `Write`) as well as other action verbs.
+> **Caveat — sentence-initial imperatives are detected unreliably.** NLTK's
+> tagger frequently labels a capitalised sentence-opening verb as a proper noun
+> (`NNP`) instead. Which words are affected is not predictable:
+>
+> | Prompt | Verbs found | Instructional Tone |
+> |---|---|---|
+> | `Summarize this article.` | `Summarize` | 3 |
+> | `Write a haiku about the sea.` | `Write` | 3 |
+> | `Explain inertia.` | *(none)* | 0 |
+> | `List three benefits of solar energy.` | *(none)* | 0 |
+>
+> Since a bare imperative is the most natural way to write a prompt, affected
+> prompts silently lose 3 points here and 1 more on the Task element of RTCF
+> Structure — 4 of 50, or 8% of the total.
+>
+> Giving the verb a preceding word avoids the misfire (`Please explain
+> inertia.` scores 3), as does leading with a role (`You are a physics tutor.
+> Explain inertia.`). This is a limitation of the tagger, not a deliberate
+> scoring rule, and is pinned by a test in `tests/test_score_basic.py` so that
+> a future fix is visible.
 
 ---
 
@@ -234,6 +259,10 @@ Detected by: `energy usage`, `carbon`, `footprint`, `sustainable`, `green`, `eff
 
 This dimension specifically rewards prompts that are conscious of their computational footprint.
 
+> **Caveat:** these are literal substrings. `energy usage` matches, but the
+> equally natural `energy consumption` does not and scores 0. Use one of the
+> listed terms to earn the points.
+
 ```
 # Earns points:
 "Provide a green, efficient response."
@@ -310,8 +339,15 @@ For instance: {"trend": "Q3 spike", "evidence": "up 40%", "recommendation": "inv
 
 ## Limitations
 
+- **Sentence-initial imperatives are often missed.** NLTK's tagger labels the
+  leading verb of `Explain inertia.` or `List three benefits.` as a proper
+  noun, costing those prompts 4 of 50 points. See dimension 6 above. This is
+  the most impactful limitation, because it affects the most natural way to
+  phrase a prompt.
 - Role detection requires common English patterns (`you are`, `act as`, `role:`). Custom persona phrasing may not be detected.
-- Task verb detection relies on NLTK POS tagging, which can misclassify rare verb forms.
+- Keyword matching is literal, so near-synonyms are missed — `energy usage`
+  earns Energy Awareness points but `energy consumption` does not.
 - Regex patterns are English-only.
 - The scorer does not evaluate semantic quality — a grammatically poor but structurally rich prompt may still score high.
-- `score_prompt()` is called twice in `run_prompt()` (once for `prompt_score`, once for `prompt_score_details`). This is a known inefficiency.
+- Scores are comparable to each other, not calibrated against response quality;
+  treat them as a consistency signal, not a prediction.

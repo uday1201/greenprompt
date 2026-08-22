@@ -230,7 +230,10 @@ was never affected by this.
 
 ## NLTK Data
 
-`greenprompt setup` downloads the following NLTK corpora:
+`greenprompt setup` downloads the following NLTK corpora up front. If setup has
+not been run, `scoreBasic.ensure_nltk_data()` fetches whatever is missing the
+first time a prompt is scored — nothing is downloaded at import time, so no
+command pays for this just by starting up.
 
 | Resource | Used by |
 |---|---|
@@ -242,3 +245,7 @@ was never affected by this.
 | `stopwords` | Keyword richness scoring |
 
 NLTK data is downloaded to the default NLTK data path (usually `~/nltk_data/`). You can change this by setting the `NLTK_DATA` environment variable before running setup.
+
+For a fully offline install, run `greenprompt setup` once on a connected
+machine, or pre-populate `NLTK_DATA`. Once every resource above resolves,
+scoring makes no network calls at all.

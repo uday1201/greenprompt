@@ -48,6 +48,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `cli.py`, the API's monitor lifecycle, and `scoreBasic.py` — 109 new tests,
   taking the suite from 98 to 207.
 
+### Documentation
+
+- Corrected the claim in `docs/prompt-scoring.md` that dimension 6 captures
+  imperative verbs. NLTK's tagger labels a sentence-opening `Explain` or `List`
+  as a proper noun, so those prompts score 0 there and lose 4 of 50 points
+  overall. Documented with a worked table, cross-referenced from the README
+  troubleshooting section, and pinned by a test.
+- Documented that Energy Awareness matches literal substrings, so
+  `energy consumption` earns nothing while `energy usage` does.
+- `docs/architecture.md`: added `samplerLinux.py` to the module table, split
+  power sampling into macOS and Linux flows, documented the model-name matching
+  rules, and recorded the reasoning behind `create_app()`, verify-before-signal,
+  and naive UTC timestamps.
+- `docs/platform-support.md`: `greenprompt run` now works on Windows — the
+  `lsof` lookup degrades instead of raising — while `stop` still cannot
+  enumerate listeners. The previous blanket "both will fail" was wrong.
+- README: `run`/`stop` descriptions match their new behaviour, four new
+  troubleshooting entries, the WSGI factory, and the test layout.
+
 ### Fixed
 
 - `CONTRIBUTING.md` told contributors to run `ruff fmt` (not a ruff subcommand)
