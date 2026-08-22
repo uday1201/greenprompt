@@ -4,6 +4,27 @@ All notable changes to GreenPrompt are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `scripts/release.py`, which automates cutting a release: version arithmetic,
+  the `pyproject.toml` rewrite, promoting this file's `## [Unreleased]` section,
+  the commit, the annotated tag, and the push. Every precondition — branch,
+  clean tree, sync with origin, tag availability, PyPI version availability,
+  monotonic version, non-empty release notes, lint, tests — runs before any file
+  is written, because a PyPI version number can never be reused once published.
+  `--rehearse` dry-runs the whole pipeline without changing anything.
+- `tests/test_release.py`: 22 tests covering the release script's version
+  arithmetic, `pyproject.toml` rewriting, and CHANGELOG promotion.
+- A Releasing section in `CONTRIBUTING.md`.
+
+### Fixed
+
+- `CONTRIBUTING.md` told contributors to run `ruff fmt` (not a ruff subcommand)
+  and `pytest` (not a dependency, and not how the suite is written). Both now
+  match the tooling the project actually uses.
+
 ## [0.2.0] — 2026-08-22
 
 The headline change is live power measurement on Linux: GreenPrompt now reports
