@@ -6,6 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/release.py`, which automates cutting a release: version arithmetic,
+  the `pyproject.toml` rewrite, promoting this file's `## [Unreleased]` section,
+  the commit, the annotated tag, and the push. Every precondition — branch,
+  clean tree, sync with origin, tag availability, PyPI version availability,
+  monotonic version, non-empty release notes, lint, tests — runs before any file
+  is written, because a PyPI version number can never be reused once published.
+  `--rehearse` dry-runs the whole pipeline without changing anything.
+- `tests/test_release.py`: 22 tests covering the release script's version
+  arithmetic, `pyproject.toml` rewriting, and CHANGELOG promotion.
+- A Releasing section in `CONTRIBUTING.md`.
+- Test coverage for the previously untested modules: `core.py`, `dbconn.py`,
+  `cli.py`, the API's monitor lifecycle, and `scoreBasic.py` — 109 new tests,
+  taking the suite from 98 to 207.
+
 ### Changed
 
 - **The database now lives at `~/.greenprompt/greenprompt_usage.db`.** The path
@@ -86,21 +102,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   invocation — `greenprompt --help` included — attempted four network round
   trips. Corpora are now fetched on demand and only when actually missing.
 
-### Added
-
-- `scripts/release.py`, which automates cutting a release: version arithmetic,
-  the `pyproject.toml` rewrite, promoting this file's `## [Unreleased]` section,
-  the commit, the annotated tag, and the push. Every precondition — branch,
-  clean tree, sync with origin, tag availability, PyPI version availability,
-  monotonic version, non-empty release notes, lint, tests — runs before any file
-  is written, because a PyPI version number can never be reused once published.
-  `--rehearse` dry-runs the whole pipeline without changing anything.
-- `tests/test_release.py`: 22 tests covering the release script's version
-  arithmetic, `pyproject.toml` rewriting, and CHANGELOG promotion.
-- A Releasing section in `CONTRIBUTING.md`.
-- Test coverage for the previously untested modules: `core.py`, `dbconn.py`,
-  `cli.py`, the API's monitor lifecycle, and `scoreBasic.py` — 109 new tests,
-  taking the suite from 98 to 207.
+- `CONTRIBUTING.md` told contributors to run `ruff fmt` (not a ruff subcommand)
+  and `pytest` (not a dependency, and not how the suite is written). Both now
+  match the tooling the project actually uses.
 
 ### Documentation
 
@@ -120,12 +124,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   enumerate listeners. The previous blanket "both will fail" was wrong.
 - README: `run`/`stop` descriptions match their new behaviour, four new
   troubleshooting entries, the WSGI factory, and the test layout.
-
-### Fixed
-
-- `CONTRIBUTING.md` told contributors to run `ruff fmt` (not a ruff subcommand)
-  and `pytest` (not a dependency, and not how the suite is written). Both now
-  match the tooling the project actually uses.
 
 ## [0.2.0] — 2026-08-22
 
