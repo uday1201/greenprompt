@@ -1,8 +1,15 @@
 name: Tests
 
+# Branch pushes are limited to main so that work on a pull request is tested
+# once, not twice. Previously `push: ['**']` and `pull_request` both fired for
+# every commit on a PR branch, running the whole matrix twice — 14 redundant
+# jobs per push once the matrix covered five Python versions.
+#
+# The trade-off: pushing a branch with no open pull request no longer runs CI.
+# Open the PR (a draft is enough) to get it.
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
