@@ -10,9 +10,11 @@ bug in bump_version() or promote_changelog() is not something a follow-up commit
 can undo.
 """
 
+import ast
 import pathlib
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "scripts"))
 
@@ -182,6 +184,81 @@ class TestRealRepositoryFiles(unittest.TestCase):
             text, "99.0.0", "2099-01-01", allow_empty=True
         )
         self.assertIn("## [99.0.0] — 2099-01-01", out)
+
+
+class TestTwoPhaseInterface(unittest.TestCase):
+    """
+    The release runs in two phases because the repository ruleset requires a
+    pull request for any change to main — a direct `git push origin main` is
+    rejected even with bypass rights, so the version bump travels through a
+    pull request and only the tag is pushed directly.
+    """
+
+    def test_tag_release_exists(self):
+        self.assertTrue(callable(release.tag_release))
+
+    def test_phase_one_never_pushes_to_the_release_branch(self):
+        """
+        A regression guard on the actual constraint: an earlier version ran
+        `git push origin main`, which the ruleset rejects at release time.
+        """
+        tree = ast.parse(pathlib.Path(release.__file__).read_text())
+        main_fn = next(
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef) and n.name == "main"
+        )
+        for node in ast.walk(main_fn):
+            if isinstance(node, ast.List):
+                argv = [e.value for e in node.elts if isinstance(e, ast.Constant)]
+                if argv[:3] == ["git", "push", "origin"]:
+                    self.assertNotEqual(argv[3:4], [release.RELEASE_BRANCH])
+
+    def test_tag_release_refuses_a_version_mismatch(self):
+        """Guards against tagging before the release pull request is merged."""
+        with (
+            mock.patch.object(release, "run", return_value=""),
+            mock.patch.object(release, "read_version", return_value="0.2.0"),
+        ):
+            with self.assertRaises(release.ReleaseError) as ctx:
+                release.tag_release("0.3.0")
+        self.assertIn("0.2.0", str(ctx.exception))
+
+    def test_tag_release_refuses_an_existing_tag(self):
+        def fake_run(cmd, **kw):
+            return "v0.3.0" if cmd[:3] == ["git", "tag", "--list"] else ""
+
+        with (
+            mock.patch.object(release, "run", side_effect=fake_run),
+            mock.patch.object(release, "read_version", return_value="0.3.0"),
+        ):
+            with self.assertRaises(release.ReleaseError):
+                release.tag_release("0.3.0")
+
+    def test_tag_release_refuses_a_version_already_on_pypi(self):
+        with (
+            mock.patch.object(release, "run", return_value=""),
+            mock.patch.object(release, "read_version", return_value="0.3.0"),
+            mock.patch.object(release, "published_versions", return_value={"0.3.0"}),
+        ):
+            with self.assertRaises(release.ReleaseError):
+                release.tag_release("0.3.0")
+
+    def test_tag_release_pushes_the_tag_when_everything_agrees(self):
+        calls = []
+
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            return ""
+
+        with (
+            mock.patch.object(release, "run", side_effect=fake_run),
+            mock.patch.object(release, "read_version", return_value="0.3.0"),
+            mock.patch.object(release, "published_versions", return_value=set()),
+        ):
+            release.tag_release("0.3.0")
+
+        self.assertIn(["git", "push", "origin", "v0.3.0"], calls)
 
 
 if __name__ == "__main__":
