@@ -21,10 +21,46 @@ import re
 import nltk
 from nltk.corpus import stopwords
 
-nltk.download("punkt", quiet=True)
-nltk.download("averaged_perceptron_tagger", quiet=True)
-nltk.download("wordnet", quiet=True)
-nltk.download("stopwords", quiet=True)
+#: NLTK resources this module needs, as (download name, nltk.data.find path).
+#: Both the legacy and the >=3.9 resource names are listed because which one
+#: NLTK looks for depends on its version, and having the other present is
+#: harmless.
+_NLTK_RESOURCES = (
+    ("punkt", "tokenizers/punkt"),
+    ("punkt_tab", "tokenizers/punkt_tab"),
+    ("averaged_perceptron_tagger", "taggers/averaged_perceptron_tagger"),
+    ("averaged_perceptron_tagger_eng", "taggers/averaged_perceptron_tagger_eng"),
+    ("wordnet", "corpora/wordnet"),
+    ("stopwords", "corpora/stopwords"),
+)
+
+#: Set once ensure_nltk_data() has confirmed every resource is present, so the
+#: check costs nothing after the first scored prompt.
+_nltk_data_ready = False
+
+
+def ensure_nltk_data(force=False):
+    """
+    Make sure the NLTK corpora this module needs are available locally.
+
+    Downloads only what is actually missing, and only the first time it is
+    called. This deliberately does not run at import time: `cli.py` imports
+    this module unconditionally, so downloading on import made every single
+    command — `greenprompt --help` included — attempt four network round
+    trips before printing anything.
+
+    Args:
+        force: Re-check every resource even if a previous call succeeded.
+    """
+    global _nltk_data_ready
+    if _nltk_data_ready and not force:
+        return
+    for name, path in _NLTK_RESOURCES:
+        try:
+            nltk.data.find(path)
+        except LookupError:
+            nltk.download(name, quiet=True)
+    _nltk_data_ready = True
 
 
 def normalize(text):
@@ -32,12 +68,14 @@ def normalize(text):
 
 
 def get_verbs(text):
+    ensure_nltk_data()
     tokens = nltk.word_tokenize(text)
     pos_tags = nltk.pos_tag(tokens)
     return [word for word, tag in pos_tags if tag.startswith("VB")]
 
 
 def count_unique_keywords(text):
+    ensure_nltk_data()
     stop_words = set(stopwords.words("english"))
     words = nltk.word_tokenize(text)
     return len(
@@ -199,6 +237,7 @@ def score_prompt(prompt):
             score_percent (float): total_score / max_score * 100.
             details (dict): Per-dimension scores keyed by dimension name.
     """
+    ensure_nltk_data()
     prompt_norm = normalize(prompt)
     score_details = {}
 

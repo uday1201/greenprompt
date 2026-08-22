@@ -24,31 +24,79 @@ from greenprompt.scoreBasic import score_prompt
 OLLAMA_URL = constants.OLLAMA_URL + "/api/generate"
 
 
+#: Rough estimated energy per 1000 tokens, in watt-hours, keyed by model family.
+#: These are order-of-magnitude heuristics for offline comparison, not
+#: measurements — the hardware-measured `energy_wh` is the authoritative figure.
+#: Add or calibrate entries here; see docs/configuration.md.
+MODEL_ENERGY_MAP = {
+    "gpt-3.5": 0.02,
+    "gpt-4": 0.06,
+    "gpt-4o": 0.04,
+    "llama2": 0.01,
+    "llama3": 0.012,
+    "mistral": 0.008,
+    "phi": 0.005,
+}
+
+#: Used when the model matches no entry above.
+DEFAULT_ENERGY_PER_1K_WH = 0.01
+
+
+def normalize_model_name(model):
+    """
+    Reduce an Ollama model reference to its bare family name.
+
+    Ollama names carry a tag — "llama3.2:latest", "mistral:7b-instruct" — and
+    may be namespaced ("library/llama3"). Lookups against MODEL_ENERGY_MAP are
+    done on the bare, lowercased name so that a tag does not defeat the match.
+
+    Args:
+        model: A model reference, possibly tagged and/or namespaced.
+
+    Returns:
+        The lowercased family name, e.g. "llama3.2" for "library/llama3.2:latest".
+        Returns "" for None or a blank string.
+    """
+    if not model:
+        return ""
+    name = str(model).split(":", 1)[0]  # drop the ":tag"
+    name = name.rsplit("/", 1)[-1]  # drop any "namespace/"
+    return name.strip().lower()
+
+
 def estimate_energy_from_tokens(model, token_count):
     """
-    Estimate energy usage (in watt-hours, Wh) based on the model type and token count.
+    Estimate energy usage (in watt-hours, Wh) from the model and token count.
+
+    The model name is normalised first, then matched against MODEL_ENERGY_MAP:
+    an exact family match wins, otherwise the longest matching prefix is used
+    so that point releases inherit their family's rate ("llama3.2" -> "llama3").
+    Anything unrecognised falls back to DEFAULT_ENERGY_PER_1K_WH.
+
+    Matching on the raw name used to be an exact lookup, which no tagged Ollama
+    model could ever satisfy — every prompt silently used the default rate.
 
     Parameters:
-        model (str): The name of the model used (e.g., 'gpt-3.5', 'llama2').
-        token_count (int): The total number of tokens used for the prompt + response.
+        model (str): Model reference, e.g. 'llama3.2:latest' or 'gpt-4o'.
+        token_count (int): Total tokens for the prompt + response.
 
     Returns:
         float: Estimated energy consumption in Wh.
     """
-    # Mapping model to estimated energy usage per 1000 tokens (Wh)
-    MODEL_ENERGY_MAP = {
-        "gpt-3.5": 0.02,
-        "gpt-4": 0.06,
-        "gpt-4o": 0.04,
-        "llama2": 0.01,
-        "mistral": 0.008,
-        "phi": 0.005,
-    }
+    key = normalize_model_name(model)
+    multiplier = MODEL_ENERGY_MAP.get(key)
 
-    model_key = model.lower()
-    multiplier = MODEL_ENERGY_MAP.get(model_key, 0.01)  # Default fallback if unknown
-    energy = (token_count / 1000) * multiplier
-    return energy
+    if multiplier is None:
+        # Longest prefix first, so "gpt-4o" is preferred over "gpt-4".
+        for family in sorted(MODEL_ENERGY_MAP, key=len, reverse=True):
+            if key.startswith(family):
+                multiplier = MODEL_ENERGY_MAP[family]
+                break
+
+    if multiplier is None:
+        multiplier = DEFAULT_ENERGY_PER_1K_WH
+
+    return (token_count / 1000) * multiplier
 
 
 def estimate_tokens_from_prompt(prompt, model="gpt-3.5"):
@@ -154,10 +202,14 @@ def run_prompt(prompt, model="llama2", monitor=False):
     energy_estimate_tokens = estimate_energy_from_tokens(model, total_tokens)
     energy_estimate_prompt = estimate_energy_from_tokens(model, prompt_tokens)
 
+    # Scored once and reused: score_prompt() runs the whole NLTK pipeline, and
+    # this used to call it twice to fill in two adjacent fields.
+    score = score_prompt(prompt)
+
     response = {
         "prompt": prompt,
-        "prompt_score": score_prompt(prompt).get("score_percent", 0),
-        "prompt_score_details": score_prompt(prompt).get("details", {}),
+        "prompt_score": score.get("score_percent", 0),
+        "prompt_score_details": score.get("details", {}),
         "response": data.get("response", ""),
         "model": model,
         "prompt_tokens": prompt_tokens,

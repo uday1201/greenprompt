@@ -15,7 +15,7 @@ callers with json.loads.
 import sqlite3
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from greenprompt.sysUsage import get_system_info
 
 # Path to the SQLite database file
@@ -96,6 +96,21 @@ def init_db():
     conn.close()
 
 
+def utc_now_iso():
+    """
+    Return the current UTC time as a naive ISO 8601 string.
+
+    Deliberately naive — no "+00:00" suffix. get_prompt_usage() filters by
+    comparing timestamps as strings, so an offset-aware value would not only
+    change the format of new rows but would sort inconsistently against every
+    row already in the database, silently breaking /api/usage/timeframe.
+
+    This replaces datetime.utcnow(), which is deprecated as of Python 3.12,
+    while producing byte-identical output to it.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+
+
 def _first_not_none(data: dict, *keys):
     """Return the first value from data that is not None, checking keys in order."""
     for key in keys:
@@ -123,7 +138,7 @@ def save_prompt_usage(data: dict):
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
         (
-            datetime.utcnow().isoformat(),
+            utc_now_iso(),
             data.get("prompt"),
             data.get("prompt_score"),
             json.dumps(data.get("prompt_score_details", {})),

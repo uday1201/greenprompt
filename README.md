@@ -588,7 +588,6 @@ git push origin feature/your-feature
 
 - Windows support via Intel Power Gadget / WMI, and a `lsof`-free server lifecycle
 - Test coverage for the scoring, database, and analytics modules
-- Model-aware token energy estimates (the current table predates Ollama model naming)
 - VS Code extension
 - Browser extension for cloud LLM APIs
 - Carbon offset integration
