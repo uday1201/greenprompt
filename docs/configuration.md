@@ -77,13 +77,13 @@ You can maintain separate databases per project by running `greenprompt setup` f
 ```bash
 # Project A
 cd ~/projects/project-a
-sudo greenprompt setup
-sudo greenprompt run
+greenprompt setup
+greenprompt run
 
 # Project B
 cd ~/projects/project-b
-sudo greenprompt setup
-sudo greenprompt run --port 5001  # different port to avoid conflict
+greenprompt setup
+greenprompt run --port 5001  # different port to avoid conflict
 ```
 
 ### Schema
@@ -119,7 +119,7 @@ GROUP BY model;
 Default: `5000`. Override with `--port`:
 
 ```bash
-sudo greenprompt run --port 8080
+greenprompt run --port 8080
 ```
 
 ### Log file
@@ -172,7 +172,7 @@ brew services start ollama
 
 ### Default model
 
-The CLI and API default to `llama2`. Override per-request:
+The CLI and API default to `llama3.2:latest`. Override per-request:
 
 ```bash
 greenprompt prompt "Hello" --model mistral
@@ -207,6 +207,14 @@ MODEL_ENERGY_MAP = {
 ```
 
 Unknown models fall back to `0.01` Wh/1000 tokens.
+
+> **Known limitation:** the lookup is an exact match on the model string, but
+> Ollama model names carry a tag — the default is `llama3.2:latest`, not
+> `llama3`. No key in the table as shipped can ever match a real Ollama model
+> name, so in practice every prompt uses the `0.01` fallback and
+> `energy_estimate_tokens` is proportional to token count alone. Treat the
+> "estimated vs actual" dashboard chart accordingly; the *measured* energy
+> figures are unaffected. Tracked for a fix in a future release.
 
 ---
 

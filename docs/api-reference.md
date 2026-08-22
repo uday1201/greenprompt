@@ -1,6 +1,6 @@
 # GreenPrompt REST API Reference
 
-The GreenPrompt API server is a Flask application started with `sudo greenprompt run`. All endpoints are served on `http://localhost:<port>` (default port 5000).
+The GreenPrompt API server is a Flask application started with `greenprompt run` (no root required). All endpoints are served on `http://localhost:<port>` (default port 5000).
 
 ---
 
@@ -27,7 +27,7 @@ Content-Type: application/json
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `prompt` | string | Yes | — | The prompt text to send to the model |
-| `model` | string | No | `"llama2"` | Ollama model name |
+| `model` | string | No | `"llama3.2:latest"` | Ollama model name |
 
 **Example request:**
 

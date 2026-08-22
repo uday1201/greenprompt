@@ -31,7 +31,7 @@ GreenPrompt is a local-first tool that intercepts Ollama LLM calls, measures CPU
 
 ## Features
 
-- **Real-time power sampling** — Continuously samples system CPU/GPU power every second via macOS `powermetrics`, retaining a 10-minute sliding window.
+- **Real-time power sampling** — Continuously samples system CPU/GPU power every second, retaining a 10-minute sliding window. macOS uses `powermetrics`; Linux uses Intel/AMD RAPL energy counters, an ARM big.LITTLE frequency model, or `nvidia-smi` for GPU power.
 - **Per-prompt energy measurement** — Computes watt-hours consumed during each LLM call against a 1-minute idle baseline.
 - **Token tracking** — Records prompt tokens, completion tokens, and total tokens per run from Ollama's response metadata.
 - **Dual estimation** — Provides both hardware-measured power and token-based estimates for cross-validation and offline comparison.
@@ -47,8 +47,8 @@ GreenPrompt is a local-first tool that intercepts Ollama LLM calls, measures CPU
 
 - Python 3.9 or higher
 - [Ollama](https://ollama.com) installed and running locally
-- **macOS required for live power sampling** — uses `powermetrics` (Apple Silicon or Intel)
-- Linux/Windows: scoring, logging, and token tracking work fully; power sampling returns zero (see [Platform Support](#platform-support))
+- **Live power sampling on macOS and Linux** — `powermetrics` on macOS (Apple Silicon or Intel); RAPL, ARM big.LITTLE, or `nvidia-smi` on Linux
+- Windows: scoring, logging, and token tracking work fully; power sampling returns zero (see [Platform Support](#platform-support))
 
 ---
 
@@ -79,14 +79,15 @@ poetry install
 ## Quick Start
 
 ```bash
-# 1. Initialize (first time only; requires sudo on macOS for powermetrics)
+# 1. Initialize (first time only; on macOS run it once with sudo so that
+#    powermetrics can be used without a password prompt afterwards)
 sudo greenprompt setup
 
 # 2. Start the API server (required for prompt and dashboard commands)
-sudo greenprompt run --port 5000
+greenprompt run --port 5000
 
 # 3. Send a prompt and see energy stats
-greenprompt prompt "Explain quantum entanglement in one sentence." --model llama2
+greenprompt prompt "Explain quantum entanglement in one sentence." --model llama3.2:latest
 
 # 4. Open the analytics dashboard
 greenprompt dashboard
@@ -100,22 +101,29 @@ GreenPrompt installs three equivalent command aliases: `greenprompt`, `gprompt`,
 
 ### Command Overview
 
-| Command | Description | Requires sudo (macOS) |
+No GreenPrompt command needs to be run as root. The one exception is the
+first `setup` on macOS: running it once with `sudo` installs a sudoers rule so
+that `powermetrics` can be sampled without a password prompt from then on.
+Without it, GreenPrompt still runs — energy readings are simply zero.
+
+| Command | Description | Requires sudo |
 |---|---|---|
-| `setup` | Initialize DB, download NLTK data, configure Ollama | Yes |
-| `run` | Start the Flask API server in the background | Yes |
+| `setup` | Write config, download NLTK data, verify Ollama, create DB | Once, on macOS |
+| `run` | Start the Flask API server in the background | No |
 | `prompt` | Send a prompt; print response and energy stats | No |
 | `monitor` | Display the last N prompt usage entries from DB | No |
 | `score` | Score a prompt without sending it to a model | No |
 | `dashboard` | Open the analytics dashboard in a browser | No |
-| `stop` | Stop the running API server | Yes |
+| `stop` | Stop the running API server | No |
 | `log_api` | Tail the API server log file | No |
 
 ---
 
 ### `greenprompt setup`
 
-Initializes the environment: writes `constants.py` with system info, downloads NLTK resources, verifies Ollama, and creates the SQLite database.
+Initializes the environment: detects CPU power capabilities and writes them to the user config file (`~/.greenprompt/config.json` by default), downloads NLTK resources, verifies Ollama, and creates the SQLite database.
+
+On macOS it also installs `/etc/sudoers.d/greenprompt`, which allows `powermetrics` to be sampled without a password. That step is the only reason to use `sudo` here, and it is skipped with an explanatory message if you run without it.
 
 ```bash
 sudo greenprompt setup [--ollama-port PORT]
@@ -131,11 +139,13 @@ sudo greenprompt setup [--ollama-port PORT]
 
 ### `greenprompt run`
 
-Starts the GreenPrompt Flask API server as a background process. On macOS, also initializes the `PowerMonitor` background thread.
+Starts the GreenPrompt Flask API server as a background process, along with the power sampler for the current platform: `PowerMonitor` on macOS, `LinuxPowerMonitor` on Linux. Neither requires root.
 
 ```bash
-sudo greenprompt run [--port PORT]
+greenprompt run [--port PORT]
 ```
+
+> **Note:** Wait 10–15 seconds after starting before sending the first prompt, so the sampler has collected enough readings to average over.
 
 | Flag | Default | Description |
 |---|---|---|
@@ -153,7 +163,7 @@ greenprompt prompt "Your prompt here" [--model MODEL]
 
 | Flag | Default | Description |
 |---|---|---|
-| `--model` | `llama2` | Ollama model name to use |
+| `--model` | `llama3.2:latest` | Ollama model name to use |
 
 **Example:**
 
@@ -248,7 +258,7 @@ greenprompt dashboard
 Stops the Flask API server by killing the process on the given port.
 
 ```bash
-sudo greenprompt stop [--port PORT]
+greenprompt stop [--port PORT]
 ```
 
 | Flag | Default | Description |
@@ -407,15 +417,16 @@ See [docs/prompt-scoring.md](docs/prompt-scoring.md) for full details and optimi
 ```
 greenprompt/
 ├── cli.py           Entry point — argparse subcommands, starts API subprocess
-├── api.py           Flask server — REST endpoints, Ollama proxy, PowerMonitor init
+├── api.py           Flask server — REST endpoints, Ollama proxy, power monitor init
 ├── core.py          run_prompt() — orchestrates Ollama call, power measurement, scoring
 ├── dbconn.py        SQLite — init_db, save_prompt_usage, get_prompt_usage
 ├── samplerMac.py    PowerMonitor — daemon thread sampling powermetrics every second
+├── samplerLinux.py  LinuxPowerMonitor — RAPL / ARM / TDP CPU sampling + nvidia-smi GPU
 ├── sysUsage.py      OS-agnostic wrappers — system info, power measurement, GPU detection
 ├── scoreBasic.py    Prompt scorer — 18-dimension offline NLTK/regex analysis
 ├── analytics.py     Plotly chart functions for the dashboard
-├── constants.py     Auto-generated by setup — OS info, OLLAMA_URL
-├── setup.py         Setup routine — DB init, constants write, NLTK download
+├── constants.py     Tracked source — defaults, live platform values, user-config overlay
+├── setup.py         Setup routine — writes ~/.greenprompt/config.json, DB init, NLTK download
 └── templates/
     └── dashboard.html   Dashboard HTML with embedded Plotly JS
 ```
@@ -444,13 +455,24 @@ core.py: run_prompt(prompt, model)
     greenprompt_usage.db (SQLite)
 ```
 
-### Power Sampling (macOS)
+### Power Sampling
 
-`PowerMonitor` runs as a daemon thread, calling:
+On macOS and Linux, a daemon thread samples once a second into a `collections.deque` holding the last 600 readings (10 minutes). When `run_prompt()` completes, the matching `measure_power_*()` function filters samples by `[start_time, end_time]` to compute average watts and energy, and separately averages the 60 seconds before the prompt as the idle baseline.
+
+**macOS** — `PowerMonitor` (`samplerMac.py`) calls:
 ```bash
 sudo powermetrics --samplers cpu_power -n 1 -i 1000
 ```
-every second. It stores the last 600 readings (10 minutes) in a `collections.deque`. When `run_prompt()` completes, `measure_power_mac()` filters samples by `[start_time, end_time]` to compute average watts and energy, and separately averages the 60 seconds before the prompt as the idle baseline.
+
+**Linux** — `LinuxPowerMonitor` (`samplerLinux.py`) picks the best available CPU source at startup:
+
+| Mode | Condition | Method |
+|---|---|---|
+| `rapl` | `/sys/class/powercap/intel-rapl*/energy_uj` present | Intel/AMD energy counter delta — measured, not estimated |
+| `arm_biglittle` | `psutil.cpu_freq(percpu=True)` reports more than one distinct max frequency | Per-cluster frequency-squared model over `scaling_cur_freq` (power ∝ V²f) |
+| `linear_tdp` | Neither of the above | `cpu_percent / 100 × CPU_TDP_W` |
+
+GPU power comes from a single long-running `nvidia-smi dmon -s p -d 1` process, with a per-call subprocess fallback. If the prompt is shorter than one sample interval, `measure_power_linux()` interpolates from neighbouring samples and flags the result with `"extrapolated": true`.
 
 For detailed architecture documentation see [docs/architecture.md](docs/architecture.md).
 
@@ -487,7 +509,8 @@ See [docs/configuration.md](docs/configuration.md) for the full configuration re
 
 | Feature | macOS Apple Silicon | macOS Intel | Linux | Windows |
 |---|---|---|---|---|
-| Live CPU/GPU power sampling | ✅ powermetrics | ✅ powermetrics | 🔜 RAPL | 🔜 Intel Power Gadget |
+| Live CPU power sampling | ✅ powermetrics | ✅ powermetrics | ✅ RAPL / ARM / TDP | 🔜 Intel Power Gadget |
+| Live GPU power sampling | ✅ powermetrics | ✅ powermetrics | ✅ nvidia-smi | 🔜 nvidia-smi |
 | GPU detection | ✅ system_profiler | ✅ system_profiler | ✅ nvidia-smi | ✅ nvidia-smi |
 | GPU utilization stats | — | — | ✅ nvidia-smi | ✅ nvidia-smi |
 | Token counting | ✅ | ✅ | ✅ | ✅ |
@@ -495,8 +518,9 @@ See [docs/configuration.md](docs/configuration.md) for the full configuration re
 | Database logging | ✅ | ✅ | ✅ | ✅ |
 | REST API & dashboard | ✅ | ✅ | ✅ | ✅ |
 | Token-based energy estimate | ✅ | ✅ | ✅ | ✅ |
+| `run` / `stop` server lifecycle | ✅ | ✅ | ✅ | ❌ needs `lsof` |
 
-Linux and Windows users will see `energy_wh = 0` for hardware power measurement; all other features are fully functional. See [docs/platform-support.md](docs/platform-support.md) for the implementation roadmap.
+Windows users will see `energy_wh = 0` for hardware power measurement; all other features are fully functional. See [docs/platform-support.md](docs/platform-support.md) for the implementation roadmap.
 
 ---
 
@@ -513,16 +537,23 @@ ollama serve
 
 The GreenPrompt API server is not running:
 ```bash
-sudo greenprompt run --port 5000
+greenprompt run --port 5000
 ```
 
-**`Error: 'setup' requires sudo privileges`**
+**Power readings are all zero on macOS**
 
-The `setup`, `run`, and `stop` commands require root on macOS because `powermetrics` needs elevated permissions. Run with `sudo`.
+The passwordless `powermetrics` rule is not installed, so the sampler cannot read power. Run setup once with sudo:
+```bash
+sudo greenprompt setup
+```
 
-**Power readings are all zero on Linux/Windows**
+**Power readings are all zero on Linux**
 
-Live power sampling is not yet implemented for non-macOS platforms. The `energy_estimate_tokens` field provides a token-count-based approximation.
+Check which mode the sampler chose — `greenprompt log_api` reports it at startup. In `linear_tdp` mode readings are estimates derived from `CPU_TDP_W`, not measurements. RAPL requires read access to `/sys/class/powercap/intel-rapl*/energy_uj`, which some distributions restrict to root. GPU power requires `nvidia-smi` on `PATH`.
+
+**Power readings are all zero on Windows**
+
+Live power sampling is not yet implemented on Windows. The `energy_estimate_tokens` field provides a token-count-based approximation.
 
 **Dashboard shows no data**
 
@@ -555,8 +586,9 @@ git push origin feature/your-feature
 
 ### Roadmap
 
-- Linux power measurement via RAPL / `nvidia-smi`
-- Windows support via Intel Power Gadget / WMI
+- Windows support via Intel Power Gadget / WMI, and a `lsof`-free server lifecycle
+- Test coverage for the scoring, database, and analytics modules
+- Model-aware token energy estimates (the current table predates Ollama model naming)
 - VS Code extension
 - Browser extension for cloud LLM APIs
 - Carbon offset integration
