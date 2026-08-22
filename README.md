@@ -413,7 +413,7 @@ The scorer is entirely offline — no API call is made. It uses NLTK POS tagging
 | Conciseness | 5 | Starts at 5; minus 1 per filler phrase ("please", "could you", "just", etc.) |
 | Contextual Priming | 3 | Matches `context:`, `background:`, `for <word>`, `audience:` |
 | Output Specification | 5 | Matches `format:`, `output as`, or table/bullet/list/json/csv/markdown |
-| Instructional Tone | 3 | Any imperative verb detected via POS tagging |
+| Instructional Tone | 3 | Any verb, via POS tagging or as a sentence-initial instruction verb |
 | Examples & Few-Shot | 2 | Matches `example:`, `Q:`, `A:`, `sample output`, `e.g.` |
 | Task Decomposition | 2 | Matches `first...then` sequence or `step N` numbering |
 | Positive/Negative Examples | 2 | Matches `do not`, `exclude`, `not include`, `except` |
@@ -613,11 +613,16 @@ deciding what to do.
 
 **My prompt scores lower than I expect**
 
-Prompts that open with a bare imperative — `Explain inertia.`, `List three
-benefits.` — are often missed by NLTK's part-of-speech tagger, which labels the
-leading verb as a proper noun. That costs 4 of 50 points. Leading with a role
-(`You are a physics tutor. Explain …`) both scores better and avoids the
-misfire. See [docs/prompt-scoring.md](docs/prompt-scoring.md#limitations).
+Check the per-dimension breakdown — `greenprompt score "..."` returns every
+dimension, so the zeros show exactly what is missing. The usual gaps are no
+stated role (`You are a physics tutor…`), no output format (`Format: bullet
+points`), and no context. See
+[docs/prompt-scoring.md](docs/prompt-scoring.md#optimizing-for-score).
+
+> Scores changed in 0.3.0: prompts opening with a bare imperative (`Explain
+> inertia.`) previously lost 4 of 50 points to a tagger misfire and now score
+> correctly. Rows already in your database keep their original scores, so
+> comparisons that straddle the upgrade are not like-for-like.
 
 **Dashboard shows no data**
 

@@ -67,11 +67,144 @@ def normalize(text):
     return re.sub(r"\s+", " ", text.lower()).strip()
 
 
+#: Instruction verbs that commonly open a prompt. Used for two things: deciding
+#: whether a sentence-initial token is an imperative verb (see get_verbs), and
+#: deciding whether a prompt states an explicit task (see has_explicit_task).
+#:
+#: One shared vocabulary, because a word that makes something a task ought also
+#: to count as a verb.
+INSTRUCTION_VERBS = frozenset(
+    {
+        # original core task verbs
+        "analyze",
+        "categorize",
+        "classify",
+        "compare",
+        "compose",
+        "define",
+        "describe",
+        "evaluate",
+        "explain",
+        "extract",
+        "generate",
+        "list",
+        "review",
+        "solve",
+        "summarize",
+        "translate",
+        "write",
+        # common instruction verbs that were previously unrecognised
+        "answer",
+        "build",
+        "calculate",
+        "check",
+        "compute",
+        "convert",
+        "count",
+        "create",
+        "critique",
+        "debug",
+        "demonstrate",
+        "derive",
+        "design",
+        "draft",
+        "elaborate",
+        "estimate",
+        "expand",
+        "explore",
+        "find",
+        "fix",
+        "format",
+        "give",
+        "group",
+        "identify",
+        "illustrate",
+        "implement",
+        "improve",
+        "interpret",
+        "introduce",
+        "justify",
+        "label",
+        "make",
+        "name",
+        "outline",
+        "plan",
+        "predict",
+        "produce",
+        "prove",
+        "provide",
+        "rank",
+        "recommend",
+        "refactor",
+        "rephrase",
+        "rewrite",
+        "revise",
+        "score",
+        "search",
+        "show",
+        "simplify",
+        "simulate",
+        "sort",
+        "suggest",
+        "tell",
+        "test",
+        "transform",
+        "validate",
+        "verify",
+    }
+)
+
+
+def _sentence_initial_imperatives(text):
+    """
+    Return the leading word of each sentence that is a known instruction verb.
+
+    NLTK's POS tagger labels a capitalised sentence-opening verb as a proper
+    noun often enough to matter: "Summarize this article." tags correctly, but
+    "Explain inertia.", "List three benefits." and "Define entropy." do not.
+    Whether a prompt was credited therefore depended on which verb it happened
+    to start with — not a defensible scoring rule, and it penalised the bare
+    imperative, which is the most natural way to write a prompt.
+
+    Lowercasing before tagging and prepending a sentinel word were both tried
+    and measured; each fixes some words and breaks others. Matching against a
+    known vocabulary is the only approach that behaves consistently.
+
+    This is a heuristic and will occasionally fire on a noun ("List of items"),
+    which is an acceptable trade in a scorer that already relies on regex
+    matching throughout.
+
+    Sentences are split on terminal punctuation and newlines rather than with
+    nltk.sent_tokenize, so this needs no extra corpus and stays deterministic.
+    """
+    found = []
+    for sentence in re.split(r"[.!?\n]+", text):
+        words = re.findall(r"[A-Za-z']+", sentence)
+        if words and words[0].lower() in INSTRUCTION_VERBS:
+            found.append(words[0])
+    return found
+
+
 def get_verbs(text):
+    """
+    Return the verbs in `text`.
+
+    POS tagging supplies the general case; sentence-initial instruction verbs
+    are added on top because the tagger mislabels them (see
+    _sentence_initial_imperatives). Order is tagger results first, then any
+    imperatives the tagger missed, with duplicates removed.
+    """
     ensure_nltk_data()
     tokens = nltk.word_tokenize(text)
     pos_tags = nltk.pos_tag(tokens)
-    return [word for word, tag in pos_tags if tag.startswith("VB")]
+    verbs = [word for word, tag in pos_tags if tag.startswith("VB")]
+
+    seen = {v.lower() for v in verbs}
+    for word in _sentence_initial_imperatives(text):
+        if word.lower() not in seen:
+            verbs.append(word)
+            seen.add(word.lower())
+    return verbs
 
 
 def count_unique_keywords(text):
@@ -89,30 +222,8 @@ def has_explicit_role(text):
 
 
 def has_explicit_task(text):
-    verbs = get_verbs(text)
-    # Strong action verbs for tasks
-    core_verbs = set(
-        [
-            "summarize",
-            "list",
-            "explain",
-            "describe",
-            "define",
-            "compare",
-            "generate",
-            "analyze",
-            "write",
-            "compose",
-            "translate",
-            "solve",
-            "classify",
-            "extract",
-            "categorize",
-            "review",
-            "evaluate",
-        ]
-    )
-    return any(v.lower() in core_verbs for v in verbs)
+    """True if the prompt names a task using a recognised instruction verb."""
+    return any(v.lower() in INSTRUCTION_VERBS for v in get_verbs(text))
 
 
 def has_context(text):
