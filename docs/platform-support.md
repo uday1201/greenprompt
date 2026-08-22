@@ -116,10 +116,29 @@ without live power sampling.
 
 `has_gpu()` and `get_gpu_usage()` work via `nvidia-smi` if CUDA drivers are installed.
 
-Note: `lsof` calls in `cli.py` (used by `run` and `stop` commands to manage the API server process) are Unix-only. On Windows, `greenprompt run` and `greenprompt stop` will fail. The API server can still be started manually:
+### Server lifecycle on Windows
+
+`cli.py` uses `lsof` and `ps` to find and identify the process listening on a
+port, and both are Unix-only. Since the correctness pass these calls degrade
+instead of raising, so the two commands behave differently:
+
+| Command | On Windows |
+|---|---|
+| `greenprompt run` | **Works.** No listener is found, so nothing is stopped and the server starts normally. It cannot detect a port conflict in advance, so a busy port surfaces as a bind error from Flask instead. |
+| `greenprompt stop` | **Does nothing.** It cannot enumerate listeners, so it reports that no GreenPrompt server was found. Stop the process through Task Manager or `taskkill`. |
+
+The server can also be started directly, which is the documented route for a
+WSGI deployment:
 
 ```cmd
 python -m greenprompt.api --port=5000
+```
+
+Behind an external WSGI server, use the factory so the (currently absent on
+Windows) sampler lifecycle is still wired correctly:
+
+```cmd
+gunicorn "greenprompt.api:create_app()"
 ```
 
 ---

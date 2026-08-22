@@ -15,13 +15,14 @@ This separation lets `PowerMonitor` accumulate a warm 10-minute power history be
 
 | Module | Owns | Does NOT own |
 |---|---|---|
-| `cli.py` | Argument parsing, user-facing output, API server lifecycle | Business logic, DB, power |
-| `api.py` | HTTP routing, PowerMonitor lifecycle, request validation | DB queries (delegates to dbconn) |
+| `cli.py` | Argument parsing, user-facing output, API server lifecycle (including verifying process ownership before signalling) | Business logic, DB, power |
+| `api.py` | HTTP routing, power monitor lifecycle via `create_app()`, request validation | DB queries (delegates to dbconn) |
 | `core.py` | Prompt execution, energy calculation, score integration | HTTP routing, DB writes (delegates) |
 | `dbconn.py` | SQLite schema, CRUD | All other concerns |
 | `samplerMac.py` | macOS power sampling thread | Parsing (delegates to sysUsage) |
+| `samplerLinux.py` | Linux power sampling thread — RAPL / ARM / TDP mode detection, `nvidia-smi dmon` | Parsing (delegates to sysUsage) |
 | `sysUsage.py` | OS detection, power measurement dispatch, parsing | Threading, storage |
-| `scoreBasic.py` | NLTK-based prompt scoring | Any I/O or network calls |
+| `scoreBasic.py` | NLTK-based prompt scoring, on-demand corpora fetch | LLM calls; any I/O beyond fetching missing corpora |
 | `analytics.py` | Plotly figure construction | Data loading (delegates to dbconn) |
 | `setup.py` | First-run initialization | Runtime operations |
 | `constants.py` | Shared configuration values | Logic |
@@ -51,13 +52,24 @@ core.py: run_prompt()
         │               ├─ baseline: samples in [start-60, start]
         │               └─ prompt:   samples in [start, end]
         ├─ score_prompt(prompt)                        [scoreBasic.py]
+        │       └─ called once; both prompt_score and prompt_score_details
+        │          are read from the single result
         └─ save_prompt_usage(result)                   [dbconn.py]
+                └─ timestamp via utc_now_iso() — naive UTC ISO 8601, because
+                   get_prompt_usage() compares timestamps as strings
 ```
 
-### Power Sampling (macOS)
+### Power Sampling
+
+The sampler is started by `create_app()`, which dispatches on `constants.OS`.
+Both platforms present the same interface — a daemon thread appending
+`(timestamp, sample_dict)` to a 600-entry deque — so `sysUsage` can share its
+averaging logic between them.
+
+#### macOS
 
 ```
-api.py startup (OS == Darwin)
+create_app() → init_power_monitor()   (OS == Darwin)
         │
         ▼
 PowerMonitor.__init__()          [samplerMac.py]
@@ -74,6 +86,26 @@ _run() [background daemon thread — never blocks API]
                   └─ parse_powermetrics_output(raw_text, 1)   [sysUsage.py]
                   └─ append (timestamp, {cpu_w, gpu_w, combined_w}) to deque
 ```
+
+#### Linux
+
+```
+create_app() → init_power_monitor()   (OS == Linux)
+        │
+        ▼
+LinuxPowerMonitor.__init__()     [samplerLinux.py]
+        │  CPU mode detected once, in priority order:
+        │    rapl          → /sys/class/powercap/intel-rapl*/…/energy_uj delta
+        │    arm_biglittle → per-cluster frequency-squared model
+        │    linear_tdp    → cpu_percent × CPU_TDP_W
+        │  GPU: one long-running `nvidia-smi dmon -s p -d 1` process
+        ▼
+LinuxPowerMonitor.start()
+        └─ loop every 1 second, appending to the same deque shape
+```
+
+On any other platform `init_power_monitor()` logs a warning and returns None;
+energy readings are then 0.
 
 ### Dashboard Rendering
 
@@ -132,7 +164,7 @@ Table: `prompt_usage`
 
 ## Energy Calculation
 
-### Hardware measurement (macOS)
+### Hardware measurement (macOS and Linux)
 
 ```
 energy_wh = (avg_combined_power_w × duration_sec) / 3600
@@ -151,18 +183,30 @@ Where `baseline_avg_power_w` is the mean of samples in `[start_time - 60, start_
 ### Token-based estimate (all platforms)
 
 ```
-energy_wh ≈ (token_count / 1000) × MODEL_ENERGY_MAP[model]
+energy_wh ≈ (token_count / 1000) × rate_for(model)
 ```
 
-| Model | Wh per 1000 tokens |
+| Model family | Wh per 1000 tokens |
 |---|---|
 | gpt-3.5 | 0.020 |
 | gpt-4 | 0.060 |
 | gpt-4o | 0.040 |
 | llama2 | 0.010 |
+| llama3 | 0.012 |
 | mistral | 0.008 |
 | phi | 0.005 |
-| (unknown) | 0.010 (default) |
+| (unmatched) | 0.010 (`DEFAULT_ENERGY_PER_1K_WH`) |
+
+`rate_for()` normalises the name before looking it up — the Ollama tag and any
+namespace are stripped and the rest lowercased, so `library/llama3.2:latest`
+becomes `llama3.2`. An exact family match wins; otherwise the longest matching
+prefix applies, so point releases inherit their family's rate and `gpt-4o` is
+never shadowed by `gpt-4`.
+
+This matters because the lookup used to be an exact match on the raw name,
+which no tagged Ollama model could satisfy — every prompt silently used the
+default rate, and the dashboard's "estimated vs actual" chart was therefore
+comparing measurements against a constant.
 
 These are static approximations for cross-platform use when hardware sampling is unavailable.
 
@@ -176,10 +220,12 @@ User terminal
     │ greenprompt run
     ▼
 cli.py (foreground)
+    │ refuses to start if the port is held by a non-GreenPrompt process
     │ subprocess.Popen(greenprompt.api --port=5000)
     ▼
 api.py (background, daemon)
-    ├─ PowerMonitor thread (daemon, macOS only)
+    ├─ power sampler thread (daemon; PowerMonitor on macOS,
+    │                        LinuxPowerMonitor on Linux)
     └─ Flask dev server on :5000
 
 User terminal
@@ -228,3 +274,20 @@ Note: the proxy currently logs passively via the forward — it does not inject 
 **Token-based estimate alongside hardware measurement** — hardware measurement requires macOS and a warm `PowerMonitor`. The token estimate is always available as a platform-agnostic fallback, and the side-by-side comparison in the dashboard helps calibrate the static coefficients over time.
 
 **NLTK + regex scoring (no model call)** — prompt scoring is deliberately offline. Making an LLM call to score a prompt would itself consume energy, defeating the purpose. The NLTK approach is fast (<50ms), free, and reproducible.
+
+**`create_app()` as the WSGI entry point** — the sampler must be started by
+whatever serves the app. Importing `app` directly deliberately starts nothing,
+so the test suite can exercise the routes without spawning `powermetrics`; the
+cost is that an external WSGI server must use the factory
+(`gunicorn 'greenprompt.api:create_app()'`) or it will record `energy_wh = 0`
+with no error.
+
+**Verify before signalling** — `run` and `stop` only send a signal to a process
+whose command line identifies it as a GreenPrompt API server, and use SIGTERM
+rather than SIGKILL so the sampler thread can shut down. Killing whatever held
+the port was convenient but meant `--port 5432` would kill Postgres.
+
+**Naive UTC timestamps** — `get_prompt_usage()` filters by comparing timestamps
+as strings. An offset-aware value would sort inconsistently against rows
+already written, so `utc_now_iso()` deliberately emits no `+00:00` suffix even
+though the underlying call is timezone-aware.
