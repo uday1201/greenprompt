@@ -133,7 +133,7 @@ sudo greenprompt setup [--ollama-port PORT]
 |---|---|---|
 | `--ollama-port` | `11434` | Port where Ollama is running |
 
-> **Note:** Run `setup` from the directory where you want the database (`greenprompt_usage.db`) to live. All subsequent commands should be run from the same directory.
+> **Note:** The database lives at `~/.greenprompt/greenprompt_usage.db` regardless of where you run `setup` from. If you already have a `greenprompt_usage.db` in the directory you run from, that one is used instead, so upgrading never strands existing data. Override with `$GREENPROMPT_DB`.
 
 ---
 
@@ -518,6 +518,7 @@ Settings live in a JSON file written by `greenprompt setup`, by default `~/.gree
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama server URL |
 | `CPU_TDP_W` | `40.0` | CPU TDP in watts; used only by the Linux `linear_tdp` fallback |
 | `CPU_POWER_SOURCE` | `estimated` | Informational; `rapl` when direct energy counters were found |
+| `DB_PATH` | *(unset)* | Explicit database location; `$GREENPROMPT_DB` overrides it |
 
 ```bash
 # where is my config?
@@ -530,7 +531,19 @@ Platform values (`OS`, `MACHINE`, `PLATFORM`, ...) are derived live on every imp
 ```
 <cwd>/greenprompt_usage.db
 ```
-Always run GreenPrompt commands from the same directory to use the same database file.
+The database is at `~/.greenprompt/greenprompt_usage.db` by default, so every
+command sees the same data no matter where it is run from. Resolution order:
+
+| Order | Source |
+|---|---|
+| 1 | `$GREENPROMPT_DB` |
+| 2 | `DB_PATH` in the config file |
+| 3 | `./greenprompt_usage.db`, if it already exists |
+| 4 | `$GREENPROMPT_HOME/greenprompt_usage.db` |
+| 5 | `~/.greenprompt/greenprompt_usage.db` |
+
+Step 3 keeps pre-0.3.0 per-directory databases working untouched. For
+deliberate per-project separation, set `$GREENPROMPT_DB`.
 
 See [docs/configuration.md](docs/configuration.md) for the full configuration reference.
 
@@ -626,11 +639,21 @@ points`), and no context. See
 
 **Dashboard shows no data**
 
-The database is either empty or was created in a different working directory. Check:
+Check whether the database actually has rows:
 ```bash
 greenprompt monitor --count 5
 ```
-If empty, send some prompts first. If the DB file is in a different directory, `cd` there before running GreenPrompt.
+If empty, send some prompts first.
+
+Before 0.3.0 the database path came from the working directory, so running
+`prompt` and `dashboard` from different places silently used different files.
+That is fixed, but data written by an older version may still be scattered.
+Find it:
+```bash
+find ~ -name greenprompt_usage.db 2>/dev/null
+```
+Point at one with `GREENPROMPT_DB=/path/to/greenprompt_usage.db greenprompt dashboard`,
+or merge them — see [docs/configuration.md](docs/configuration.md#consolidating-databases-from-older-versions).
 
 **`Warning: Power usage data is incomplete or missing`**
 

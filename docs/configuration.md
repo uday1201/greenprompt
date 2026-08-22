@@ -58,17 +58,76 @@ For richer hardware detail (CPU brand, core counts, RAM, disk, hostname), call `
 
 ### Location
 
-```
-<cwd>/greenprompt_usage.db
-```
+By default:
 
-Where `<cwd>` is the working directory when `greenprompt setup` was run. The path is computed at import time in `dbconn.py`:
-
-```python
-DB_PATH = os.path.join(os.getcwd(), "greenprompt_usage.db")
+```
+~/.greenprompt/greenprompt_usage.db
 ```
 
-> **Important:** Run all GreenPrompt commands (`run`, `prompt`, `monitor`, `dashboard`) from the **same directory** as setup to use the same database. If you run from a different directory, a new empty database will be created there.
+`dbconn.resolve_db_path()` picks the location once, at import, in this order:
+
+| Order | Source | Notes |
+|---|---|---|
+| 1 | `$GREENPROMPT_DB` | Explicit path to a database file |
+| 2 | `DB_PATH` in the config file | Same file as `OLLAMA_URL` and `CPU_TDP_W` |
+| 3 | `./greenprompt_usage.db` | Only if it already exists — see below |
+| 4 | `$GREENPROMPT_HOME/greenprompt_usage.db` | |
+| 5 | `~/.greenprompt/greenprompt_usage.db` | Default |
+
+The parent directory is created on demand, so no setup step is required.
+
+> **Upgrading from ≤ 0.2.0:** the path used to be `os.getcwd()` unconditionally,
+> so which database you got depended on where you ran the command. Step 3
+> preserves that: if a `greenprompt_usage.db` already exists in the directory
+> you run from, it is still used and nothing moves. Only directories without
+> one fall through to the new default.
+
+### Per-project databases
+
+Still supported, and now explicit rather than a side effect of your shell's
+working directory:
+
+```bash
+GREENPROMPT_DB=~/projects/project-a/usage.db greenprompt run
+GREENPROMPT_DB=~/projects/project-a/usage.db greenprompt prompt "..."
+```
+
+Or set it for a whole shell session:
+
+```bash
+export GREENPROMPT_DB=~/projects/project-a/usage.db
+```
+
+The important part is that `run`, `prompt`, and `dashboard` see the *same*
+value — a dashboard reading a different database from the one prompts were
+written to is exactly the failure this resolution order removes.
+
+### Consolidating databases from older versions
+
+If you accumulated several databases by running from different directories,
+find them and merge them into the new default:
+
+```bash
+find ~ -name greenprompt_usage.db 2>/dev/null
+
+sqlite3 ~/.greenprompt/greenprompt_usage.db \
+  "ATTACH '/path/to/other/greenprompt_usage.db' AS old;
+   INSERT INTO prompt_usage (
+     timestamp, prompt, prompt_score, prompt_score_details, response, model,
+     prompt_tokens, completion_tokens, total_tokens, energy_estimate_prompt,
+     energy_estimate_tokens, duration_sec, energy_wh, baseline_power_w,
+     baseline_energy_wh, cpu_power_w, gpu_power_w, combined_power_w, system_info
+   )
+   SELECT timestamp, prompt, prompt_score, prompt_score_details, response, model,
+     prompt_tokens, completion_tokens, total_tokens, energy_estimate_prompt,
+     energy_estimate_tokens, duration_sec, energy_wh, baseline_power_w,
+     baseline_energy_wh, cpu_power_w, gpu_power_w, combined_power_w, system_info
+   FROM old.prompt_usage;"
+```
+
+`id` is deliberately omitted so rows get fresh autoincrement keys. Back up both
+files first, and note that rows carry the prompt score recorded at the time —
+scoring changed in 0.3.0, so older rows are not directly comparable.
 
 ### Multiple databases
 
