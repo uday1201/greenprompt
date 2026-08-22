@@ -199,22 +199,32 @@ MODEL_ENERGY_MAP = {
     "gpt-4":    0.06,
     "gpt-4o":   0.04,
     "llama2":   0.01,
+    "llama3":   0.012,
     "mistral":  0.008,
     "phi":      0.005,
-    # Add your model:
-    "llama3":   0.012,
 }
 ```
 
 Unknown models fall back to `0.01` Wh/1000 tokens.
 
-> **Known limitation:** the lookup is an exact match on the model string, but
-> Ollama model names carry a tag — the default is `llama3.2:latest`, not
-> `llama3`. No key in the table as shipped can ever match a real Ollama model
-> name, so in practice every prompt uses the `0.01` fallback and
-> `energy_estimate_tokens` is proportional to token count alone. Treat the
-> "estimated vs actual" dashboard chart accordingly; the *measured* energy
-> figures are unaffected. Tracked for a fix in a future release.
+### How a model name is matched
+
+The name is normalised before lookup: the Ollama tag and any namespace are
+stripped and the rest is lowercased, so `library/llama3.2:latest` becomes
+`llama3.2`. Matching then proceeds in order:
+
+1. **Exact family match** — `llama2` hits the `llama2` entry.
+2. **Longest matching prefix** — `llama3.2` inherits the `llama3` rate, so
+   point releases do not each need their own entry. Longest-first ordering
+   means `gpt-4o` is never shadowed by `gpt-4`.
+3. **Fallback** — `DEFAULT_ENERGY_PER_1K_WH` (0.01 Wh/1000 tokens).
+
+Before 0.3.0 the lookup was an exact match on the raw name, which no tagged
+Ollama model could satisfy — every prompt silently used the fallback rate.
+
+These rates are order-of-magnitude heuristics for offline comparison, not
+measurements. The hardware-measured `energy_wh` is the authoritative figure and
+was never affected by this.
 
 ---
 

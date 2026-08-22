@@ -1,6 +1,14 @@
 # GreenPrompt REST API Reference
 
-The GreenPrompt API server is a Flask application started with `greenprompt run` (no root required). All endpoints are served on `http://localhost:<port>` (default port 5000).
+The GreenPrompt API server is a Flask application started with `greenprompt run` (no root required).
+
+Behind an external WSGI server, use the application factory so the power sampler
+is started — importing `app` directly leaves it unstarted and every prompt then
+records `energy_wh = 0`:
+
+```bash
+gunicorn 'greenprompt.api:create_app()'
+``` All endpoints are served on `http://localhost:<port>` (default port 5000).
 
 ---
 

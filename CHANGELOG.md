@@ -6,6 +6,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- `run_prompt()` called `score_prompt()` twice to populate two adjacent fields,
+  running the entire NLTK pipeline a second time for every prompt.
+- `MODEL_ENERGY_MAP` was matched exactly against the raw model name, which no
+  tagged Ollama name (`llama3.2:latest`) could ever satisfy, so every prompt
+  silently used the fallback rate. Names are now normalised — tag and namespace
+  stripped — and matched by family with a longest-prefix fallback. Measured
+  energy was never affected; the token-based estimate was.
+- `datetime.utcnow()`, deprecated in Python 3.12, replaced with a helper that
+  produces byte-identical output. The format is pinned by tests because
+  timestamps are compared as strings, so an offset-aware value would have
+  broken `/api/usage/timeframe` against existing databases.
+- `greenprompt run` and `greenprompt stop` took a PID from `lsof` output and
+  sent it `SIGKILL` without checking what it was — `--port 5432` would kill
+  Postgres. Both now verify the process is a GreenPrompt API server before
+  signalling it, query only listening sockets, and send `SIGTERM` so the
+  sampler can shut down. `run` refuses to start on a port held by anything else.
+- Serving `greenprompt.api:app` through an external WSGI server left the power
+  monitor unstarted, recording `energy_wh = 0` with no error. Added a
+  `create_app()` factory that starts the sampler; use
+  `gunicorn 'greenprompt.api:create_app()'`.
+- `scoreBasic` ran four `nltk.download()` calls at import time, so every CLI
+  invocation — `greenprompt --help` included — attempted four network round
+  trips. Corpora are now fetched on demand and only when actually missing.
+
 ### Added
 
 - `scripts/release.py`, which automates cutting a release: version arithmetic,
@@ -18,6 +44,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `tests/test_release.py`: 22 tests covering the release script's version
   arithmetic, `pyproject.toml` rewriting, and CHANGELOG promotion.
 - A Releasing section in `CONTRIBUTING.md`.
+- Test coverage for the previously untested modules: `core.py`, `dbconn.py`,
+  `cli.py`, the API's monitor lifecycle, and `scoreBasic.py` — 109 new tests,
+  taking the suite from 98 to 207.
 
 ### Fixed
 

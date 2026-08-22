@@ -3,8 +3,9 @@ api.py — GreenPrompt Flask API server.
 
 Started as a background subprocess by `greenprompt run`. Owns the power monitor
 lifecycle for the current platform — PowerMonitor on macOS, LinuxPowerMonitor on
-Linux. Exposes REST endpoints for prompt execution, usage queries, and the
-analytics dashboard. Also provides a reverse proxy to the local Ollama server.
+Linux — started via create_app(), which is also the WSGI entry point. Exposes
+REST endpoints for prompt execution, usage queries, and the analytics
+dashboard. Also provides a reverse proxy to the local Ollama server.
 
 Endpoints:
     POST /api/prompt          — run a prompt, measure energy, save to DB
@@ -17,8 +18,6 @@ Endpoints:
 Known issues:
     - The Ollama proxy target host is hardcoded to localhost:11434 and ignores
       the OLLAMA_URL setting from the user config file.
-    - `monitor` is only assigned in the __main__ block, so running this module
-      under an external WSGI server leaves it None and energy readings at zero.
 """
 
 from flask import Flask, render_template, request, jsonify, Response
@@ -198,12 +197,20 @@ def ollama_proxy(subpath):
     return Response(resp.content, status=resp.status_code, headers=response_headers)
 
 
-if __name__ == "__main__":
-    import argparse as _argparse
+def init_power_monitor():
+    """
+    Start the power sampler for this platform and return it.
 
-    _parser = _argparse.ArgumentParser()
-    _parser.add_argument("--port", type=int, default=5000)
-    _args = _parser.parse_args()
+    Idempotent: a second call returns the monitor already running rather than
+    starting another sampler thread.
+
+    Returns:
+        PowerMonitor on macOS, LinuxPowerMonitor on Linux, or None on any other
+        platform (where no sampler exists and energy readings will be zero).
+    """
+    global monitor
+    if monitor is not None:
+        return monitor
 
     if constants.OS == "Darwin":
         from greenprompt.samplerMac import PowerMonitor
@@ -215,5 +222,37 @@ if __name__ == "__main__":
 
         monitor = LinuxPowerMonitor(cpu_tdp_w=getattr(constants, "CPU_TDP_W", 40.0))
         monitor.start()
+    else:
+        logging.warning(
+            "No power sampler for %s — energy readings will be 0.", constants.OS
+        )
+    return monitor
+
+
+def create_app():
+    """
+    Application factory: start the power sampler, then return the Flask app.
+
+    This is the entry point an external WSGI server must use, e.g.
+
+        gunicorn 'greenprompt.api:create_app()'
+
+    Importing `app` directly skips sampler startup, which is why prompts served
+    that way recorded energy_wh = 0 with no error. Importing `app` still does
+    nothing on its own, so the test suite can exercise the routes without
+    spawning powermetrics.
+    """
+    init_power_monitor()
+    return app
+
+
+if __name__ == "__main__":
+    import argparse as _argparse
+
+    _parser = _argparse.ArgumentParser()
+    _parser.add_argument("--port", type=int, default=5000)
+    _args = _parser.parse_args()
+
+    create_app()
     logging.info("Starting API server...")
     app.run(host="127.0.0.1", port=_args.port, debug=False)

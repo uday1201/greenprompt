@@ -4,7 +4,8 @@ cli.py — GreenPrompt command-line interface.
 Entry point for the `greenprompt`, `gprompt`, and `greenp` commands. Parses
 subcommands and delegates to either the running API server (for prompt/monitor)
 or directly to module functions (for score). Server lifecycle (run/stop) is
-managed by spawning/killing processes on the configured port.
+managed by spawning processes and, when stopping, signalling only processes
+that are verified to be GreenPrompt API servers.
 
 Subcommands: setup, run, prompt, monitor, score, dashboard, stop, log_api.
 See README.md for full usage examples and flag reference.
@@ -24,38 +25,121 @@ from greenprompt.dbconn import get_prompt_usage
 from greenprompt.scoreBasic import score_prompt
 
 
+#: Substring that identifies a GreenPrompt API server in a process command
+#: line. `greenprompt run` spawns `python -m greenprompt.api --port=N`, so this
+#: appears in the command line of every server we start.
+API_PROCESS_MARKER = "greenprompt.api"
+
+
+def listening_pids(port):
+    """
+    Return the PIDs of processes *listening* on `port`.
+
+    Uses `lsof -sTCP:LISTEN -t`, which prints one PID per line and nothing
+    else. The previous implementation parsed the second line of plain `lsof
+    -i :PORT` output, which also matches established connections *to* that
+    port — so the PID it picked was not reliably the listener.
+
+    Returns an empty list if lsof is unavailable (notably on Windows) or
+    reports nothing, rather than raising.
+    """
+    try:
+        result = subprocess.run(
+            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, ValueError):
+        return []
+    return [line.strip() for line in result.stdout.split() if line.strip().isdigit()]
+
+
+def is_greenprompt_api(pid):
+    """
+    Return True if `pid` looks like a GreenPrompt API server.
+
+    Checked before sending any signal. Without this, `greenprompt run --port
+    5432` would kill Postgres and `--port 3000` would kill whatever dev server
+    happened to be there — the old code killed whatever owned the port.
+    """
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, ValueError):
+        return False
+    return API_PROCESS_MARKER in result.stdout
+
+
+def stop_api(port, quiet=False):
+    """
+    Stop GreenPrompt API servers listening on `port`.
+
+    Only processes that `is_greenprompt_api()` recognises are signalled;
+    anything else is reported and left alone. Sends SIGTERM rather than
+    SIGKILL so the power sampler thread gets a chance to shut down.
+
+    Args:
+        port: Port to look at.
+        quiet: Suppress the "nothing found" message.
+
+    Returns:
+        List of PIDs that were signalled.
+    """
+    killed = []
+    for pid in listening_pids(port):
+        if not is_greenprompt_api(pid):
+            print(
+                f"Refusing to kill PID {pid} on port {port}: it is not a "
+                f"GreenPrompt API server. Choose a different port."
+            )
+            continue
+        try:
+            subprocess.run(["kill", str(pid)], check=True)
+        except (OSError, subprocess.CalledProcessError) as e:
+            print(f"Could not stop PID {pid}: {e}")
+            continue
+        print(f"Stopped GreenPrompt API server on port {port} (PID {pid}).")
+        killed.append(pid)
+
+    if not killed and not quiet:
+        print(f"No GreenPrompt API server found listening on port {port}.")
+    return killed
+
+
 def run_api(port):
     """
     Start the GreenPrompt Flask API server as a background subprocess.
 
-    If a process is already listening on `port`, kills it first. Launches
-    `python -m greenprompt.api --port=<port>` via subprocess.Popen with
-    stdout/stderr suppressed.
+    Any GreenPrompt server already on `port` is stopped first. If the port is
+    held by something that is *not* a GreenPrompt server, this refuses to start
+    rather than killing it.
 
     Args:
         port: Integer port number to bind the Flask server to.
-    """
-    # Check if the port is in use
-    try:
-        result = subprocess.run(
-            ["lsof", "-i", f":{port}"], capture_output=True, text=True
-        )
-        if result.stdout:
-            print(f"Port {port} is in use. Killing the process...")
-            # Extract the process ID (PID) and kill it
-            pid = result.stdout.splitlines()[1].split()[1]
-            subprocess.run(["kill", "-9", pid], check=True)
-            print(f"Process on port {port} has been killed.")
-    except Exception as e:
-        print(f"Error checking or killing process on port {port}: {e}")
 
-    # Start the API server
-    subprocess.Popen(
+    Returns:
+        The Popen handle, or None if the port was occupied by a foreign process.
+    """
+    foreign = [pid for pid in listening_pids(port) if not is_greenprompt_api(pid)]
+    if foreign:
+        print(
+            f"Port {port} is in use by another process (PID {', '.join(foreign)}). "
+            f"Not starting. Pick another port with --port."
+        )
+        return None
+
+    stop_api(port, quiet=True)
+
+    proc = subprocess.Popen(
         [sys.executable, "-m", "greenprompt.api", f"--port={port}"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
     print(f"API server is running on port {port} in the background.")
+    return proc
 
 
 def main():
@@ -206,20 +290,8 @@ def main():
             print(f"Open manually: {url}")
 
     elif args.command == "stop":
-        port = args.port
-        print(f"Stopping API server on port {port}...")
-        try:
-            result = subprocess.run(
-                ["lsof", "-i", f":{port}"], capture_output=True, text=True
-            )
-            if result.stdout:
-                pid = result.stdout.splitlines()[1].split()[1]
-                subprocess.run(["kill", "-9", pid], check=True)
-                print(f"Process on port {port} (PID {pid}) has been killed.")
-            else:
-                print(f"No process found listening on port {port}.")
-        except Exception as e:
-            print(f"Error stopping API server on port {port}: {e}")
+        print(f"Stopping API server on port {args.port}...")
+        stop_api(args.port)
     elif args.command == "score":
         # Takes a prompt as a parameter (string) and returns the score
         parser = argparse.ArgumentParser()
