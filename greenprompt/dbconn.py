@@ -189,7 +189,12 @@ def save_prompt_usage(data: dict):
     init_db()
     conn = get_connection()
     cursor = conn.cursor()
-    system_info = json.dumps(get_system_info())
+    # run_prompt() has already gathered this and passes it through; only
+    # compute it again for callers that did not. It costs ~40ms.
+    system_info = data.get("system_info")
+    if not isinstance(system_info, dict):
+        system_info = get_system_info()
+    system_info = json.dumps(system_info)
     cursor.execute(
         """
         INSERT INTO prompt_usage (

@@ -38,6 +38,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Every prompt stalled for ~35 seconds and then failed with a 500** on any
+  machine whose own hostname does not resolve — a `.local` name with no mDNS
+  responder answering, a VPN, a container, a renamed machine.
+  `get_system_info()` called `socket.gethostbyname(socket.gethostname())`,
+  which does not fail fast: it blocks for the full DNS timeout before raising
+  `gaierror`. Because it runs *after* the Ollama call, the model had already
+  produced an answer, which was then discarded — the user paid the energy cost
+  and got nothing. It was also called twice per prompt, so the stall doubled,
+  and it was intermittent, since whether `.local` resolves depends on network
+  state.
+
+  The address is now obtained by asking the kernel which local interface would
+  route to an unroutable address (RFC 5737 TEST-NET-1) over a UDP socket. No
+  packet is sent and no name is resolved: 0.2 ms instead of 35 s, and it
+  returns the real LAN address rather than whatever the hostname mapped to.
+
+  `get_system_info()` is additionally now **total** — every probe is guarded
+  and unavailable values degrade to `"N/A"` — and its result is cached for the
+  life of the process, since everything it reports is static. Cold cost went
+  from 35,045 ms to 41 ms; repeat calls are free. `save_prompt_usage()` also
+  reuses the dict `run_prompt()` already built instead of recomputing it.
+
+  Found by end-to-end testing before the 0.3.0 release; present in 0.2.0.
+
 - `run_prompt()` called `score_prompt()` twice to populate two adjacent fields,
   running the entire NLTK pipeline a second time for every prompt.
 - `MODEL_ENERGY_MAP` was matched exactly against the raw model name, which no
