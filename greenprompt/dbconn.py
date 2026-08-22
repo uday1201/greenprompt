@@ -2,10 +2,23 @@
 dbconn.py — SQLite persistence layer for GreenPrompt.
 
 Manages the prompt_usage table: schema creation, inserting prompt run records,
-and querying with optional filters. The database file is created in the
-current working directory at the time of the first init_db() or save call.
+and querying with optional filters.
 
-DB_PATH: os.path.join(os.getcwd(), "greenprompt_usage.db")
+The database location is resolved once at import by resolve_db_path(), in this
+order:
+
+    1. $GREENPROMPT_DB                       — explicit override
+    2. DB_PATH in the user config file       — set by `greenprompt setup`
+    3. ./greenprompt_usage.db, if it exists  — legacy per-directory database
+    4. $GREENPROMPT_HOME/greenprompt_usage.db
+    5. ~/.greenprompt/greenprompt_usage.db   — default
+
+Step 3 is what makes the default safe to change: earlier versions computed the
+path from os.getcwd() unconditionally, so anyone who already has a database in
+a working directory keeps using it exactly as before. Everyone else gets one
+stable location, which removes the failure mode where `greenprompt prompt` and
+`greenprompt dashboard` run from different directories and silently use
+different databases.
 
 All timestamps are stored as UTC ISO 8601 strings. JSON blobs (system_info,
 prompt_score_details) are serialized with json.dumps and must be parsed by
@@ -16,10 +29,53 @@ import sqlite3
 import os
 import json
 from datetime import datetime, timezone
+from greenprompt import constants
 from greenprompt.sysUsage import get_system_info
 
 # Path to the SQLite database file
-DB_PATH = os.path.join(os.getcwd(), "greenprompt_usage.db")
+#: Filename used in every candidate location.
+DB_FILENAME = "greenprompt_usage.db"
+
+
+def default_db_dir():
+    """Return the directory holding the database when nothing overrides it."""
+    home = os.environ.get("GREENPROMPT_HOME")
+    if home:
+        return os.path.expanduser(home)
+    return os.path.join(os.path.expanduser("~"), ".greenprompt")
+
+
+def resolve_db_path(cwd=None):
+    """
+    Work out which database file to use. See the module docstring for the order.
+
+    Args:
+        cwd: Directory to check for a legacy database. Defaults to os.getcwd().
+
+    Returns:
+        An absolute path. The file itself need not exist yet; init_db() creates
+        it, along with its parent directory.
+    """
+    explicit = os.environ.get("GREENPROMPT_DB")
+    if explicit:
+        return os.path.abspath(os.path.expanduser(explicit))
+
+    configured = constants.load_config().get("DB_PATH")
+    if configured:
+        return os.path.abspath(os.path.expanduser(configured))
+
+    # A database already sitting in the working directory wins, so upgrading
+    # never strands data that earlier versions wrote there.
+    legacy = os.path.join(cwd if cwd is not None else os.getcwd(), DB_FILENAME)
+    if os.path.exists(legacy):
+        return os.path.abspath(legacy)
+
+    return os.path.join(default_db_dir(), DB_FILENAME)
+
+
+#: Resolved once at import. Reassign this (not the environment) to redirect
+#: reads and writes within a running process.
+DB_PATH = resolve_db_path()
 
 #: Column order of the prompt_usage table. Kept beside init_db() so callers
 #: that need the shape of an empty result set (e.g. analytics.load_usage_data
@@ -65,7 +121,13 @@ def init_db():
     every read/write path. save_prompt_usage() and get_prompt_usage() both
     call it so that a fresh working directory never raises
     "no such table: prompt_usage".
+
+    Creates the parent directory too: the default location is
+    ~/.greenprompt/, which will not exist if `greenprompt setup` never ran.
     """
+    parent = os.path.dirname(DB_PATH)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""

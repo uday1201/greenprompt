@@ -8,6 +8,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The database now lives at `~/.greenprompt/greenprompt_usage.db`.** The path
+  was previously computed from `os.getcwd()` on every import, so running
+  `greenprompt prompt` and `greenprompt dashboard` from different directories
+  used different databases and the dashboard came up empty with no error — the
+  cause of the "Dashboard shows no data" entry in the troubleshooting docs.
+
+  Nothing is stranded by the change: a `greenprompt_usage.db` already present
+  in the working directory is still used, so existing per-directory databases
+  keep working exactly as before. Deliberate per-project separation is now
+  explicit via `$GREENPROMPT_DB` or a `DB_PATH` config entry rather than
+  implied by the shell's working directory. `docs/configuration.md` documents
+  how to consolidate databases left behind by older versions.
+
 - **Prompt scores are higher for prompts that open with a bare imperative.**
   `get_verbs()` relied solely on NLTK POS tagging, which labels a capitalised
   sentence-opening verb as a proper noun often enough that whether a prompt was

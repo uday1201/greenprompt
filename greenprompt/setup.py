@@ -235,10 +235,12 @@ def main():
     # Check if Ollama is installed
     check_ollama()
 
-    # Initialize the database and create tables. DB_PATH is relative to the
-    # current working directory, so tell the user exactly where it landed.
+    # Initialize the database and create tables. The location is resolved by
+    # dbconn.resolve_db_path(), which may pick up an existing database in the
+    # working directory, so always report where it actually landed.
     init_db()
     print(f"✅ Database ready at {DB_PATH}")
+    print("   Override with $GREENPROMPT_DB or a DB_PATH entry in the config file.")
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ Every test runs against a temporary database file, never the real one.
 import ast
 import os
 import pathlib
+import shutil
 import tempfile
 import warnings
 import unittest
@@ -265,6 +266,131 @@ class TestNoDeprecationWarning(unittest.TestCase):
         finally:
             if os.path.exists(path):
                 os.unlink(path)
+
+
+class TestResolveDbPath(unittest.TestCase):
+    """
+    Path resolution order: $GREENPROMPT_DB, config DB_PATH, a legacy database
+    in the working directory, $GREENPROMPT_HOME, then ~/.greenprompt/.
+
+    The legacy step is the one that makes changing the default safe — earlier
+    versions computed the path from os.getcwd() unconditionally, so a database
+    already sitting in a working directory must keep being used.
+    """
+
+    def setUp(self):
+        # Start from a known-empty environment and no user config.
+        for var in ("GREENPROMPT_DB", "GREENPROMPT_HOME"):
+            p = mock.patch.dict(os.environ, {}, clear=False)
+            p.start()
+            self.addCleanup(p.stop)
+            os.environ.pop(var, None)
+        cfg = mock.patch.object(dbconn.constants, "load_config", return_value={})
+        cfg.start()
+        self.addCleanup(cfg.stop)
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(self.tmp, ignore_errors=True))
+
+    def test_env_var_wins(self):
+        target = os.path.join(self.tmp, "explicit.db")
+        with mock.patch.dict(os.environ, {"GREENPROMPT_DB": target}):
+            self.assertEqual(dbconn.resolve_db_path(cwd=self.tmp), target)
+
+    def test_env_var_expands_user(self):
+        with mock.patch.dict(os.environ, {"GREENPROMPT_DB": "~/custom.db"}):
+            resolved = dbconn.resolve_db_path(cwd=self.tmp)
+        self.assertNotIn("~", resolved)
+        self.assertTrue(resolved.endswith("custom.db"))
+
+    def test_config_used_when_no_env(self):
+        target = os.path.join(self.tmp, "configured.db")
+        with mock.patch.object(
+            dbconn.constants, "load_config", return_value={"DB_PATH": target}
+        ):
+            self.assertEqual(dbconn.resolve_db_path(cwd=self.tmp), target)
+
+    def test_env_beats_config(self):
+        env_target = os.path.join(self.tmp, "env.db")
+        with (
+            mock.patch.object(
+                dbconn.constants, "load_config", return_value={"DB_PATH": "/cfg.db"}
+            ),
+            mock.patch.dict(os.environ, {"GREENPROMPT_DB": env_target}),
+        ):
+            self.assertEqual(dbconn.resolve_db_path(cwd=self.tmp), env_target)
+
+    def test_legacy_database_in_cwd_is_kept(self):
+        """An existing per-directory database must not be abandoned."""
+        legacy = os.path.join(self.tmp, dbconn.DB_FILENAME)
+        pathlib.Path(legacy).touch()
+        self.assertEqual(dbconn.resolve_db_path(cwd=self.tmp), legacy)
+
+    def test_absent_legacy_database_falls_through_to_the_default(self):
+        resolved = dbconn.resolve_db_path(cwd=self.tmp)
+        self.assertNotEqual(os.path.dirname(resolved), self.tmp)
+        self.assertTrue(resolved.endswith(dbconn.DB_FILENAME))
+
+    def test_config_beats_legacy(self):
+        pathlib.Path(os.path.join(self.tmp, dbconn.DB_FILENAME)).touch()
+        target = os.path.join(self.tmp, "configured.db")
+        with mock.patch.object(
+            dbconn.constants, "load_config", return_value={"DB_PATH": target}
+        ):
+            self.assertEqual(dbconn.resolve_db_path(cwd=self.tmp), target)
+
+    def test_greenprompt_home_is_honoured(self):
+        with mock.patch.dict(os.environ, {"GREENPROMPT_HOME": self.tmp}):
+            resolved = dbconn.resolve_db_path(cwd=tempfile.mkdtemp())
+        self.assertEqual(resolved, os.path.join(self.tmp, dbconn.DB_FILENAME))
+
+    def test_default_is_under_dot_greenprompt(self):
+        resolved = dbconn.resolve_db_path(cwd=tempfile.mkdtemp())
+        self.assertEqual(
+            resolved,
+            os.path.join(os.path.expanduser("~"), ".greenprompt", dbconn.DB_FILENAME),
+        )
+
+    def test_result_is_always_absolute(self):
+        cases = [{}, {"GREENPROMPT_DB": "relative.db"}, {"GREENPROMPT_HOME": self.tmp}]
+        for env in cases:
+            with self.subTest(env=env), mock.patch.dict(os.environ, env):
+                self.assertTrue(os.path.isabs(dbconn.resolve_db_path(cwd=self.tmp)))
+
+    def test_two_directories_now_share_one_database(self):
+        """
+        The defect: `greenprompt prompt` and `greenprompt dashboard` run from
+        different directories used different databases, so the dashboard was
+        silently empty.
+        """
+        a, b = tempfile.mkdtemp(), tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(a, ignore_errors=True))
+        self.addCleanup(lambda: shutil.rmtree(b, ignore_errors=True))
+        self.assertEqual(dbconn.resolve_db_path(cwd=a), dbconn.resolve_db_path(cwd=b))
+
+
+class TestInitDbCreatesParent(unittest.TestCase):
+    def test_missing_parent_directory_is_created(self):
+        # The default lives in ~/.greenprompt/, which will not exist if setup
+        # has never been run.
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        nested = os.path.join(tmp, "does", "not", "exist", dbconn.DB_FILENAME)
+        with mock.patch.object(dbconn, "DB_PATH", nested):
+            dbconn.init_db()
+            self.assertTrue(os.path.exists(nested))
+
+    def test_write_then_read_at_a_created_location(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        nested = os.path.join(tmp, "fresh", dbconn.DB_FILENAME)
+        with (
+            mock.patch.object(dbconn, "DB_PATH", nested),
+            mock.patch.object(dbconn, "get_system_info", return_value={}),
+        ):
+            dbconn.save_prompt_usage({"prompt": "hello", "model": "llama3.2:latest"})
+            rows = dbconn.get_prompt_usage()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["prompt"], "hello")
 
 
 if __name__ == "__main__":

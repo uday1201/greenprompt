@@ -267,7 +267,15 @@ Note: the proxy currently logs passively via the forward — it does not inject 
 
 **SQLite over a remote database** — keeps the tool fully local and zero-config. No signup, no network dependency beyond Ollama itself.
 
-**DB path via `os.getcwd()`** — intentional: users can maintain separate databases per project by running from different directories.
+**A single default database path** — the location was previously `os.getcwd()`
+unconditionally, on the reasoning that users could keep per-project databases by
+running from different directories. In practice the dominant effect was that
+`greenprompt prompt` and `greenprompt dashboard` run from different directories
+used different databases, and the dashboard came up empty with no error. The
+default is now `~/.greenprompt/`, with `$GREENPROMPT_DB` and a config key for
+anyone who genuinely wants per-project separation — the same capability, made
+explicit rather than implied by the shell's working directory. An existing
+database in the working directory still wins, so upgrading strands no data.
 
 **Daemon thread for PowerMonitor** — ensures the thread exits automatically when the Flask process terminates, preventing zombie processes.
 
