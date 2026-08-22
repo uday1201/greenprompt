@@ -2,17 +2,21 @@ name: Publish Python Package to PyPI
 
 # Releasing is a deliberate act: push a version tag and this ships it.
 #
-#   poetry version minor          # or major / patch / 0.2.0
-#   git commit -am "chore(release): 0.2.0"
-#   git tag v0.2.0
-#   git push && git push --tags
+# Do not drive this by hand — use the release script, which performs the same
+# steps behind preconditions that all run before anything is written:
+#
+#   python scripts/release.py minor      # or major / patch / an explicit 0.3.0
+#
+# It bumps pyproject.toml, promotes the CHANGELOG's Unreleased section, commits,
+# tags, and pushes. See the Releasing section of CONTRIBUTING.md.
 #
 # The tag must match the version in pyproject.toml, and that version must not
 # already exist on PyPI — both are checked before anything is uploaded, because
 # a PyPI version number can never be reused once published.
 #
 # Use the workflow_dispatch trigger with dry_run enabled to rehearse the whole
-# pipeline (lint, tests, build, metadata check) without publishing.
+# pipeline (lint, tests, build, metadata check) without publishing, or run
+# `python scripts/release.py <bump> --rehearse`, which triggers the same thing.
 #
 # Authentication is PyPI Trusted Publishing (OIDC) — there is no API token.
 # One-time setup at
