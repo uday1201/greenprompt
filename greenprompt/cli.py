@@ -68,7 +68,7 @@ def main():
     # setup command
     p_setup = subparsers.add_parser(
         "setup",
-        help="Install and configure Ollama, initialize database, generate constants",
+        help="Write the user config, download NLTK data, verify Ollama, initialize the database",
     )
     p_setup.add_argument(
         "--ollama-port",
@@ -87,7 +87,10 @@ def main():
     )
     p_prompt.add_argument("prompt", type=str, help="The prompt text to send")
     p_prompt.add_argument(
-        "--model", type=str, default="llama3.2:latest", help="Model to use (default: llama3.2:latest)"
+        "--model",
+        type=str,
+        default="llama3.2:latest",
+        help="Model to use (default: llama3.2:latest)",
     )
     p_prompt.add_argument(
         "--port", type=int, default=5000, help="API server port (default: 5000)"
@@ -106,7 +109,9 @@ def main():
     )
 
     # dashboard command
-    p_dash = subparsers.add_parser("dashboard", help="Open the dashboard in your browser")
+    p_dash = subparsers.add_parser(
+        "dashboard", help="Open the dashboard in your browser"
+    )
     p_dash.add_argument(
         "--port", type=int, default=5000, help="API server port (default: 5000)"
     )
@@ -132,7 +137,7 @@ def main():
         from greenprompt.setup import main as setup_main
 
         setup_main()
-        print("✅ Setup complete: database initialized and constants saved")
+        print("✅ Setup complete: config written and database initialized")
 
     elif args.command == "run":
         print(f"Starting API server on port {args.port}...")

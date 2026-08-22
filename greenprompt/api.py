@@ -1,10 +1,10 @@
 """
 api.py — GreenPrompt Flask API server.
 
-Started as a background subprocess by `greenprompt run`. Owns the PowerMonitor
-lifecycle on macOS. Exposes REST endpoints for prompt execution, usage queries,
-and the analytics dashboard. Also provides a reverse proxy to the local Ollama
-server.
+Started as a background subprocess by `greenprompt run`. Owns the power monitor
+lifecycle for the current platform — PowerMonitor on macOS, LinuxPowerMonitor on
+Linux. Exposes REST endpoints for prompt execution, usage queries, and the
+analytics dashboard. Also provides a reverse proxy to the local Ollama server.
 
 Endpoints:
     POST /api/prompt          — run a prompt, measure energy, save to DB
@@ -15,8 +15,10 @@ Endpoints:
     ANY  /ollama/api/<path>   — transparent proxy to Ollama at :11434
 
 Known issues:
-    - Line 2 import should be `from greenprompt.analytics import ...`
-    - Ollama proxy URL uses /ollama/api/ but Ollama base is /api/
+    - The Ollama proxy target host is hardcoded to localhost:11434 and ignores
+      the OLLAMA_URL setting from the user config file.
+    - `monitor` is only assigned in the __main__ block, so running this module
+      under an external WSGI server leaves it None and energy readings at zero.
 """
 
 from flask import Flask, render_template, request, jsonify, Response
@@ -158,8 +160,9 @@ def ollama_proxy(subpath):
     """
     Proxy any Ollama API request to the local Ollama server at :11434.
 
-    Note: the target URL path is currently /ollama/api/<subpath> which is
-    incorrect — Ollama's base path is /api/<subpath>. This is a known bug.
+    A request to /ollama/api/<subpath> is forwarded to /api/<subpath> on the
+    Ollama server. Note that the host is hardcoded rather than read from
+    constants.OLLAMA_URL, so a non-default Ollama location is not honoured here.
     """
     # Construct the target URL on the Ollama server (default port 11434)
     target_url = f"http://localhost:11434/api/{subpath}"
@@ -197,16 +200,19 @@ def ollama_proxy(subpath):
 
 if __name__ == "__main__":
     import argparse as _argparse
+
     _parser = _argparse.ArgumentParser()
     _parser.add_argument("--port", type=int, default=5000)
     _args = _parser.parse_args()
 
     if constants.OS == "Darwin":
         from greenprompt.samplerMac import PowerMonitor
+
         monitor = PowerMonitor()
         monitor.start()
     elif constants.OS == "Linux":
         from greenprompt.samplerLinux import LinuxPowerMonitor
+
         monitor = LinuxPowerMonitor(cpu_tdp_w=getattr(constants, "CPU_TDP_W", 40.0))
         monitor.start()
     logging.info("Starting API server...")

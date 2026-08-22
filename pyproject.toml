@@ -1,35 +1,33 @@
 [tool.poetry]
 name = "greenprompt"
-version = "0.1.1"
+version = "0.2.0"
 description = "A green prompt tool to estimate energy usage of LLM prompts"
 readme = "README.md"
 authors = ["Uday udapra@gmail.com", "Anirudh anirudhpandey244@gmail.com"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
 ]
 license = "MIT"
 keywords = ["llm","energy","monitoring","ollama","cli"]
 homepage = "https://github.com/uday1201/greenprompt"
 repository = "https://github.com/uday1201/greenprompt"
 
+# Runtime dependencies only — every entry below is imported by the package.
+# Anything needed to develop, lint, or publish GreenPrompt belongs in the dev
+# group, so `pip install greenprompt` stays small for end users.
 [tool.poetry.dependencies]
 python = ">=3.9,<4.0"
-openai = ">=1.77.0,<2.0.0"
-requests = ">=2.32.3,<3.0.0"
-psutil = ">=7.0.0,<8.0.0"
-Flask = ">=3.1.0,<4.0.0"
-py-cpuinfo = ">=9.0.0,<10.0.0"
-flask-cors = ">=6.0.0,<7.0.0"
-tiktoken = ">=0.9.0,<0.10.0"
-twine = "^6.1.0"
-plotly = "^6.1.1"
-pandas = "^2.2.3"
-statsmodels = "^0.14.4"
-nbformat = "^5.10.4"
-ruff = "^0.11.11"
-pre-commit = "^4.2.0"
-nltk = "^3.9.1"
+requests = ">=2.32.3,<3.0.0"      # core.py, api.py, cli.py
+psutil = ">=7.0.0,<8.0.0"         # sysUsage.py
+Flask = ">=3.1.0,<4.0.0"          # api.py
+py-cpuinfo = ">=9.0.0,<10.0.0"    # sysUsage.py
+flask-cors = ">=6.0.0,<7.0.0"     # api.py
+tiktoken = ">=0.9.0,<0.10.0"      # core.py
+plotly = "^6.1.1"                 # analytics.py, api.py
+pandas = "^2.2.3"                 # analytics.py
+nltk = "^3.9.1"                   # scoreBasic.py, setup.py
 
 [tool.poetry.scripts]
 greenprompt = "greenprompt.cli:main"
@@ -38,6 +36,13 @@ greenp = "greenprompt.cli:main"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"
+# Pinned to the same version as .pre-commit-config.yaml and the CI workflows
+# so local hooks, CI, and the release pipeline never disagree.
+ruff = "0.11.11"
+pre-commit = "^4.2.0"
+twine = "^6.1.0"        # release pipeline metadata checks
+statsmodels = "^0.14.4" # plots.ipynb exploration only
+nbformat = "^5.10.4"    # plots.ipynb exploration only
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
