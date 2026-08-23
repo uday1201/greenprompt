@@ -8,7 +8,7 @@ readings.
 powermetrics requires root, but the greenprompt process itself does NOT need
 to run as root. Instead, configure passwordless sudo for powermetrics once:
 
-    sudo greenprompt setup
+    sudo $(command -v greenprompt) setup
 
 That command writes /etc/sudoers.d/greenprompt so subsequent `sudo powermetrics`
 calls in this module succeed without a password prompt. After setup, all
@@ -26,20 +26,49 @@ from greenprompt.sysUsage import parse_powermetrics_output
 
 _SUDOERS_HINT = (
     "Power sampling requires passwordless sudo for powermetrics.\n"
-    "Run once to configure it:\n"
-    "    sudo greenprompt setup\n"
+    "Run once to configure it, using an absolute path — sudo replaces PATH\n"
+    "with secure_path, which contains neither ~/.local/bin nor any venv:\n"
+    "    sudo $(command -v greenprompt) setup\n"
     "Until then, energy readings will be zero."
 )
 
 
 def _check_powermetrics_sudo() -> bool:
-    """Return True if `sudo -n powermetrics` succeeds without a password prompt."""
+    """
+    Return True if powermetrics can be run under sudo without a password.
+
+    Probes by taking one real sample at the shortest interval, which costs
+    about 0.28s and exercises the exact thing that matters: this binary, via
+    this sudoers rule, without a prompt.
+
+    The obvious cheaper probes do not work. `powermetrics --version` is not a
+    flag — it prints usage and exits non-zero — so the previous implementation
+    returned False unconditionally and warned every macOS user that their
+    energy readings would be zero even when they were fine. `sudo -l` is no
+    better: on an admin account the blanket %admin rule makes it exit 0 for any
+    command, so it cannot tell a specific NOPASSWD entry from a general one.
+
+    Note when testing by hand that sudo caches credentials for several minutes,
+    so a probe run shortly after any other sudo command succeeds for the wrong
+    reason. Run `sudo -k` first.
+    """
     try:
         subprocess.run(
-            ["sudo", "-n", "powermetrics", "--version"],
+            [
+                "sudo",
+                "-n",
+                "powermetrics",
+                "--samplers",
+                "cpu_power",
+                "-n",
+                "1",
+                "-i",
+                "1",
+            ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=True,
+            timeout=15,
         )
         return True
     except Exception:
@@ -66,6 +95,7 @@ class PowerMonitor:
             combined_power_w}) tuples.
         running: bool, True while the background thread is active.
     """
+
     def __init__(self, sample_interval=1, window_size=600):  # store 10 minutes
         self.samples = deque(maxlen=window_size)
         self.running = False

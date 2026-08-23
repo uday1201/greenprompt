@@ -18,7 +18,12 @@ repository = "https://github.com/uday1201/greenprompt"
 # Anything needed to develop, lint, or publish GreenPrompt belongs in the dev
 # group, so `pip install greenprompt` stays small for end users.
 [tool.poetry.dependencies]
-python = ">=3.9,<4.0"
+# Capped below 3.14 because tiktoken publishes no 3.14 wheels: pip falls back
+# to a source build and fails with "can't find Rust compiler". Declaring <4.0
+# promised an install that cannot succeed on a default-3.14 machine. Raise this
+# once tiktoken ships 3.14 wheels, and add 3.14 to the CI matrix in the same
+# change so the claim stays tested.
+python = ">=3.9,<3.14"
 requests = ">=2.32.3,<3.0.0"      # core.py, api.py, cli.py
 psutil = ">=7.0.0,<8.0.0"         # sysUsage.py
 Flask = ">=3.1.0,<4.0.0"          # api.py

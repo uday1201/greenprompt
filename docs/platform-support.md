@@ -26,12 +26,19 @@ All features are available on macOS (Apple Silicon and Intel).
 Power sampling uses `powermetrics`, a macOS system tool that reports per-package CPU and GPU power in milliwatts. It requires root privileges, but GreenPrompt itself does not: `samplerMac.py` shells out to `sudo powermetrics` internally, and running `setup` once as root installs `/etc/sudoers.d/greenprompt` so that call never prompts for a password.
 
 ```bash
-sudo greenprompt setup                          # once — installs the sudoers rule
+sudo $(command -v greenprompt) setup            # once — installs the sudoers rule
 greenprompt run --port 5000                     # no sudo
 greenprompt prompt "..." --model llama3.2:latest  # no sudo
 ```
 
-`samplerMac._check_powermetrics_sudo()` verifies the rule at startup with `sudo -n powermetrics --version` and warns if it is missing; readings are zero until `sudo greenprompt setup` is run.
+`samplerMac._check_powermetrics_sudo()` verifies the rule at startup by taking
+one real sample (`sudo -n powermetrics --samplers cpu_power -n 1 -i 1`, about
+0.28s) and warns if that is refused; readings are zero until setup has run.
+
+It probes with a real sample rather than something cheaper because the cheaper
+options do not work. `powermetrics --version` is not a flag — it prints usage
+and exits non-zero — and `sudo -l` returns 0 for any command on an admin
+account, so neither can tell a working rule from a missing one.
 
 The `PowerMonitor` class in `samplerMac.py` runs `powermetrics` in a subprocess every second. On Apple Silicon, this reports unified memory architecture (UMA) CPU and GPU power as separate values. On Intel Macs, it reports CPU package power; integrated GPU power may be reported as 0 depending on the Mac model.
 

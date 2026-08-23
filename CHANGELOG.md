@@ -6,7 +6,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **macOS always warned that energy readings would be zero, even when they
+  were not.** `_check_powermetrics_sudo()` probed with
+  `sudo -n powermetrics --version`, but `--version` is not a powermetrics
+  option: it prints usage and exits non-zero, so the check returned False
+  unconditionally. Confirmed on a machine where a real sample runs passwordless
+  and a prompt reports CPU 2.09 W. The probe now takes one real sample
+  (`--samplers cpu_power -n 1 -i 1`, ~0.28s) and has a timeout so a missing
+  rule cannot hang startup. `sudo -l` was evaluated as a cheaper alternative
+  and rejected: on an admin account it exits 0 for any command.
+- **`sudo greenprompt setup` failed for pipx and virtualenv installs**, which
+  is most of them, with `sudo: greenprompt: command not found`. `sudo` replaces
+  `PATH` with `secure_path`, which contains neither `~/.local/bin` nor any
+  venv. Every instance in the docs, the CLI help, and the runtime hint now uses
+  `sudo $(command -v greenprompt) setup` and says why.
+- **The declared Python range promised versions that cannot install.**
+  `>=3.9,<4.0` allowed pip to attempt 3.14, where `tiktoken` publishes no
+  wheels; the install then fails with `can't find Rust compiler`. On a machine
+  whose default `python3` is 3.14 the documented install simply did not work.
+  Capped at `<3.14`, with the reason recorded so it is lifted deliberately.
+
+### Added
+
+- A packaging test asserting that every Python version `pyproject.toml` claims
+  to support is one the CI matrix actually runs, in both directions. The 3.14
+  breakage existed precisely because the declared range outran the tested one,
+  and nothing checked the two against each other.
 
 ## [0.4.3] — 2026-08-22
 

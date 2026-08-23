@@ -138,7 +138,8 @@ def configure_powermetrics_sudoers():
     Write /etc/sudoers.d/greenprompt to allow passwordless powermetrics.
 
     Only runs on macOS. Requires the current process to be root (i.e. the user
-    ran `sudo greenprompt setup`). If this succeeds, subsequent `greenprompt run`
+    ran `sudo $(command -v greenprompt) setup`). If this succeeds, subsequent
+    `greenprompt run`
     calls work without sudo because samplerMac.py calls `sudo powermetrics`
     internally and the sudoers rule removes the password prompt.
 
@@ -166,7 +167,7 @@ def configure_powermetrics_sudoers():
         print(
             "ℹ️  Skipping powermetrics sudo configuration (not running as root).\n"
             "   For accurate power tracking on macOS, run setup once with sudo:\n"
-            "       sudo greenprompt setup\n"
+            "       sudo $(command -v greenprompt) setup\n"
             "   After that, 'greenprompt run' works without sudo."
         )
         return False
