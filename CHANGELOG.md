@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.4.0] — 2026-08-22
+
 ### Added
 
 - **`greenprompt migrate`**, which folds databases left behind by older
@@ -228,6 +232,7 @@ Initial public release: Ollama prompt execution with macOS `powermetrics`
 energy measurement, 18-dimension offline prompt scoring, SQLite logging, a
 Flask REST API, and a Plotly dashboard.
 
+[0.4.0]: https://github.com/uday1201/greenprompt/releases/tag/v0.4.0
 [0.3.0]: https://github.com/uday1201/greenprompt/releases/tag/v0.3.0
 [0.2.0]: https://github.com/uday1201/greenprompt/releases/tag/v0.2.0
 [0.1.1]: https://github.com/uday1201/greenprompt/releases/tag/v0.1.1
