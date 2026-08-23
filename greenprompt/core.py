@@ -141,7 +141,8 @@ def run_prompt(prompt, model="llama2", monitor=False):
         "total_energy (Wh)", duration_sec, "combined_power_w (W)",
         "cpu_power_w (W)", "gpu_power_w (W)", energy_estimate_tokens,
         energy_estimate_prompt, "baseline_energy (Wh)", "baseline_power (W)",
-        gpu_usage, system_info.
+        gpu_usage, system_info, saved (bool), and save_error (only when the
+        row could not be written).
 
     Raises:
         RuntimeError: If Ollama is unreachable or returns a non-200 response.
@@ -228,9 +229,16 @@ def run_prompt(prompt, model="llama2", monitor=False):
         "system_info": get_system_info(),
     }
 
+    # Persistence failure is reported in the payload, not just logged. A
+    # measurement that never reaches the database is a failure of the tool's
+    # one job, and printing to stdout under the API server buries it in
+    # /tmp/api.log where nobody looks.
     try:
         save_prompt_usage(response)
+        response["saved"] = True
     except Exception as e:
+        response["saved"] = False
+        response["save_error"] = str(e)
         print(f"Warning: Failed to save prompt usage: {e}")
 
     return response

@@ -273,6 +273,12 @@ def main():
             print(f"GPU power (W): {data.get('gpu_power_w (W)')}")
             print(f"Combined power (W): {data.get('combined_power_w (W)')}")
             print(f"Energy used (Wh): {data.get('total_energy (Wh)')}")
+            if data.get("saved") is False:
+                print(
+                    "\n⚠️  This run was NOT saved to the database:\n"
+                    f"    {data.get('save_error', 'unknown error')}\n"
+                    "    It will not appear in `greenprompt monitor` or the dashboard."
+                )
         except requests.exceptions.ConnectionError:
             print(f"Error: cannot connect to API server on port {args.port}.")
             print(f"Start it first with: greenprompt run --port {args.port}")
@@ -324,8 +330,17 @@ def main():
             merge_database,
         )
 
+        from greenprompt.dbconn import DatabaseNotWritable, check_writable
+
         target = DB_PATH
         print(f"Merging into {target}")
+        try:
+            check_writable(target)
+        except DatabaseNotWritable as e:
+            # The unwritable file is the target, not any source; saying so once
+            # beats repeating SQLite's message for every source we try.
+            print(f"\nError: {e}")
+            sys.exit(1)
 
         sources = args.sources
         if sources:

@@ -109,6 +109,48 @@ PROMPT_USAGE_COLUMNS = (
 )
 
 
+class DatabaseNotWritable(RuntimeError):
+    """
+    The database exists but cannot be written to.
+
+    Raised in place of SQLite's "attempt to write a readonly database", which
+    names neither the file nor the remedy. The overwhelmingly common cause is a
+    file created by an old `sudo greenprompt run` and left owned by root, after
+    which every non-root command fails to save.
+    """
+
+
+def check_writable(path=None):
+    """
+    Raise DatabaseNotWritable if `path` exists but cannot be written.
+
+    Checked explicitly rather than left to SQLite so the message can name the
+    file and say how to fix it.
+    """
+    path = path or DB_PATH
+    if not os.path.exists(path):
+        return
+    if os.access(path, os.W_OK):
+        return
+
+    owner = ""
+    try:
+        import pwd
+
+        owner = pwd.getpwuid(os.stat(path).st_uid).pw_name
+    except Exception:  # noqa: BLE001 — best-effort detail for the message
+        pass
+
+    me = os.environ.get("USER") or "$(whoami)"
+    owned_by = f" It is owned by {owner}." if owner and owner != me else ""
+    raise DatabaseNotWritable(
+        f"Cannot write to {path}.{owned_by}\n"
+        f"  Prompts will not be saved until this is fixed. To take ownership:\n"
+        f"      sudo chown {me} {path}\n"
+        f"  Or point GreenPrompt at a different file with $GREENPROMPT_DB."
+    )
+
+
 def get_connection():
     """
     Returns a new SQLite connection.
@@ -134,6 +176,7 @@ def init_db():
     if parent:
         os.makedirs(parent, exist_ok=True)
     existed = os.path.exists(DB_PATH)
+    check_writable()
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
