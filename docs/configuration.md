@@ -76,6 +76,11 @@ By default:
 
 The parent directory is created on demand, so no setup step is required.
 
+When `setup` is run with `sudo`, paths resolve against the *invoking* user's
+home rather than root's, and anything created is handed back to that user.
+Otherwise the config and database would either land in `/var/root/` or be left
+owned by root and unwritable by every later command.
+
 > **Upgrading from ≤ 0.2.0:** the path used to be `os.getcwd()` unconditionally,
 > so which database you got depended on where you ran the command. Step 3
 > preserves that: if a `greenprompt_usage.db` already exists in the directory
@@ -105,185 +110,34 @@ written to is exactly the failure this resolution order removes.
 ### Consolidating databases from older versions
 
 If you accumulated several databases by running from different directories,
-find them and merge them into the new default:
+merge them with the built-in command rather than by hand:
 
 ```bash
-find ~ -name greenprompt_usage.db 2>/dev/null
-
-sqlite3 ~/.greenprompt/greenprompt_usage.db \
-  "ATTACH '/path/to/other/greenprompt_usage.db' AS old;
-   INSERT INTO prompt_usage (
-     timestamp, prompt, prompt_score, prompt_score_details, response, model,
-     prompt_tokens, completion_tokens, total_tokens, energy_estimate_prompt,
-     energy_estimate_tokens, duration_sec, energy_wh, baseline_power_w,
-     baseline_energy_wh, cpu_power_w, gpu_power_w, combined_power_w, system_info
-   )
-   SELECT timestamp, prompt, prompt_score, prompt_score_details, response, model,
-     prompt_tokens, completion_tokens, total_tokens, energy_estimate_prompt,
-     energy_estimate_tokens, duration_sec, energy_wh, baseline_power_w,
-     baseline_energy_wh, cpu_power_w, gpu_power_w, combined_power_w, system_info
-   FROM old.prompt_usage;"
+greenprompt migrate --dry-run   # report what would move
+greenprompt migrate             # merge, with a confirmation prompt
 ```
 
-`id` is deliberately omitted so rows get fresh autoincrement keys. Back up both
-files first, and note that rows carry the prompt score recorded at the time —
-scoring changed in 0.3.0, so older rows are not directly comparable.
-
-### Multiple databases
-
-You can maintain separate databases per project by running `greenprompt setup` from different directories:
+It searches your home directory and the current directory to a bounded depth,
+and accepts explicit sources:
 
 ```bash
-# Project A
-cd ~/projects/project-a
-greenprompt setup
-greenprompt run
-
-# Project B
-cd ~/projects/project-b
-greenprompt setup
-greenprompt run --port 5001  # different port to avoid conflict
+greenprompt migrate --from ~/old-project/greenprompt_usage.db
 ```
 
-### Schema
+Three properties make it safe to reach for:
 
-See [architecture.md](architecture.md#sqlite-schema) for the full `prompt_usage` table schema.
+- **Idempotent.** Rows are identified by `(timestamp, prompt, model)`, and
+  timestamps carry microseconds, so re-running merges nothing. There is no
+  window in which running it twice doubles your history.
+- **Non-destructive.** Sources are opened read-only and are never modified or
+  deleted. Delete them yourself once you have checked the result.
+- **Schema-tolerant.** `prompt_score` and `prompt_score_details` arrived with
+  prompt scoring, and `energy_estimate_*` later still, so a database written by
+  an older version has fewer columns — which is precisely the kind worth
+  merging. Only shared columns are copied; the rest stay empty.
 
-### Inspecting the database directly
-
-```bash
-sqlite3 greenprompt_usage.db
-
-# Show all records
-SELECT id, timestamp, model, total_tokens, energy_wh, prompt_score
-FROM prompt_usage
-ORDER BY timestamp DESC
-LIMIT 10;
-
-# Total energy by model
-SELECT model, COUNT(*) as runs, SUM(energy_wh) as total_wh, AVG(energy_wh) as avg_wh
-FROM prompt_usage
-GROUP BY model;
-
-# Exit
-.quit
-```
-
----
-
-## API Server
-
-### Port
-
-Default: `5000`. Override with `--port`:
-
-```bash
-greenprompt run --port 8080
-```
-
-### Log file
-
-API server logs are written to `/tmp/api.log`. Tail with:
-
-```bash
-greenprompt log_api --follow
-# or directly:
-tail -f /tmp/api.log
-```
-
-The log file is truncated (cleared) each time the API server starts.
-
-### CORS
-
-CORS is enabled for all origins by default (`flask-cors`). This cannot currently be configured without editing `api.py`.
-
----
-
-## PowerMonitor (macOS)
-
-The `PowerMonitor` class in `samplerMac.py` has two configurable parameters set at instantiation in `api.py`:
-
-| Parameter | Default | Description |
-|---|---|---|
-| `sample_interval` | `1` second | How often to call `powermetrics` |
-| `window_size` | `600` samples | Ring buffer size (600 × 1s = 10 minutes) |
-
-To change these, edit the `PowerMonitor()` instantiation in `api.py`:
-
-```python
-# api.py — increase to 20-minute window, sample every 2 seconds
-monitor = PowerMonitor(sample_interval=2, window_size=600)
-```
-
-Note that `sample_interval` affects both the frequency of `powermetrics` calls and the resolution of energy calculations. A shorter interval gives finer-grained measurements but more subprocess overhead.
-
----
-
-## Ollama
-
-GreenPrompt requires Ollama running at `OLLAMA_URL` (default `http://127.0.0.1:11434`). GreenPrompt does not manage Ollama's lifecycle — start it separately:
-
-```bash
-ollama serve
-# or as a background service (macOS)
-brew services start ollama
-```
-
-### Default model
-
-The CLI and API default to `llama3.2:latest`. Override per-request:
-
-```bash
-greenprompt prompt "Hello" --model mistral
-```
-
-Or in the API:
-
-```json
-{"prompt": "Hello", "model": "phi"}
-```
-
-Any model name that Ollama recognizes is valid. Run `ollama list` to see installed models.
-
----
-
-## Token-Based Energy Estimates
-
-The `MODEL_ENERGY_MAP` in `core.py` maps model names to estimated watt-hours per 1000 tokens. Edit this dict to add or calibrate entries:
-
-```python
-# core.py
-MODEL_ENERGY_MAP = {
-    "gpt-3.5":  0.02,
-    "gpt-4":    0.06,
-    "gpt-4o":   0.04,
-    "llama2":   0.01,
-    "llama3":   0.012,
-    "mistral":  0.008,
-    "phi":      0.005,
-}
-```
-
-Unknown models fall back to `0.01` Wh/1000 tokens.
-
-### How a model name is matched
-
-The name is normalised before lookup: the Ollama tag and any namespace are
-stripped and the rest is lowercased, so `library/llama3.2:latest` becomes
-`llama3.2`. Matching then proceeds in order:
-
-1. **Exact family match** — `llama2` hits the `llama2` entry.
-2. **Longest matching prefix** — `llama3.2` inherits the `llama3` rate, so
-   point releases do not each need their own entry. Longest-first ordering
-   means `gpt-4o` is never shadowed by `gpt-4`.
-3. **Fallback** — `DEFAULT_ENERGY_PER_1K_WH` (0.01 Wh/1000 tokens).
-
-Before 0.3.0 the lookup was an exact match on the raw name, which no tagged
-Ollama model could satisfy — every prompt silently used the fallback rate.
-
-These rates are order-of-magnitude heuristics for offline comparison, not
-measurements. The hardware-measured `energy_wh` is the authoritative figure and
-was never affected by this.
+Note that rows carry the prompt score recorded at the time. Scoring changed in
+0.3.0, so older rows are not directly comparable with newer ones.
 
 ---
 

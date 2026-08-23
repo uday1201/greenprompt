@@ -7,7 +7,8 @@ or directly to module functions (for score). Server lifecycle (run/stop) is
 managed by spawning processes and, when stopping, signalling only processes
 that are verified to be GreenPrompt API servers.
 
-Subcommands: setup, run, prompt, monitor, score, dashboard, stop, log_api.
+Subcommands: setup, run, prompt, monitor, score, dashboard, stop, log_api,
+migrate.
 See README.md for full usage examples and flag reference.
 
 Sudo policy: no greenprompt command requires the caller to be root. On macOS,
@@ -17,6 +18,7 @@ for powermetrics; thereafter all commands run as a normal user.
 """
 
 import argparse
+import os
 import requests
 import sys
 import subprocess
@@ -209,6 +211,27 @@ def main():
         help="Port where the API server is running (default: 5000)",
     )
 
+    # migrate command
+    p_migrate = subparsers.add_parser(
+        "migrate",
+        help="Merge databases left by older versions into the one in use",
+    )
+    p_migrate.add_argument(
+        "--from",
+        dest="sources",
+        action="append",
+        metavar="PATH",
+        help="Database to merge (repeatable). Skips discovery when given.",
+    )
+    p_migrate.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report what would be merged without writing anything",
+    )
+    p_migrate.add_argument(
+        "-y", "--yes", action="store_true", help="Do not prompt for confirmation"
+    )
+
     # score command
     p_score = subparsers.add_parser(
         "score", help="Score a prompt using the built-in scoring function"
@@ -292,6 +315,67 @@ def main():
     elif args.command == "stop":
         print(f"Stopping API server on port {args.port}...")
         stop_api(args.port)
+    elif args.command == "migrate":
+        import sqlite3
+
+        from greenprompt.dbconn import (
+            DB_PATH,
+            find_databases,
+            merge_database,
+        )
+
+        target = DB_PATH
+        print(f"Merging into {target}")
+
+        sources = args.sources
+        if sources:
+            sources = [
+                s for s in sources if os.path.abspath(s) != os.path.abspath(target)
+            ]
+        else:
+            print("Searching for other databases…")
+            sources = find_databases()
+
+        if not sources:
+            print("No other GreenPrompt databases found. Nothing to do.")
+            return
+
+        # Report before touching anything, so --dry-run and the confirmation
+        # prompt show the same numbers the real run will use.
+        planned = []
+        for src in sources:
+            try:
+                count = merge_database(src, dry_run=True)
+            except (ValueError, sqlite3.Error) as e:
+                # One unreadable or incompatible database must not abort the
+                # rest of the merge.
+                print(f"  skipping {src}: {e}")
+                continue
+            planned.append((src, count))
+            print(f"  {src}: {count} new row(s)")
+
+        total = sum(c for _, c in planned)
+        if total == 0:
+            print("Everything is already merged. Nothing to do.")
+            return
+        if args.dry_run:
+            print(f"Dry run: {total} row(s) would be merged. Nothing was written.")
+            return
+        if not args.yes:
+            reply = input(f"Merge {total} row(s) into {target}? [y/N] ")
+            if reply.strip().lower() not in ("y", "yes"):
+                print("Aborted; nothing was changed.")
+                return
+
+        merged = 0
+        for src, _ in planned:
+            try:
+                merged += merge_database(src)
+            except (ValueError, sqlite3.Error) as e:
+                print(f"  failed to merge {src}: {e}")
+        print(f"Merged {merged} row(s). Sources were left untouched.")
+        print("Re-running this is safe: already-merged rows are skipped.")
+
     elif args.command == "score":
         # Takes a prompt as a parameter (string) and returns the score
         parser = argparse.ArgumentParser()

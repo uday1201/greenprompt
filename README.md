@@ -115,6 +115,7 @@ Without it, GreenPrompt still runs — energy readings are simply zero.
 | `score` | Score a prompt without sending it to a model | No |
 | `dashboard` | Open the analytics dashboard in a browser | No |
 | `stop` | Stop the running API server | No |
+| `migrate` | Merge databases left by older versions into the one in use | No |
 | `log_api` | Tail the API server log file | No |
 
 ---
@@ -272,6 +273,38 @@ greenprompt stop [--port PORT]
 | Flag | Default | Description |
 |---|---|---|
 | `--port` | `5000` | Port where the API server is running |
+
+---
+
+### `greenprompt migrate`
+
+Folds databases left behind by older versions into the one currently in use.
+Versions before 0.3.0 resolved the database path from the working directory, so
+it is easy to have several.
+
+```bash
+greenprompt migrate --dry-run          # report what would move
+greenprompt migrate                    # merge, with a confirmation prompt
+greenprompt migrate --from path/to/greenprompt_usage.db   # explicit source
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--from` | *(discover)* | Database to merge; repeatable. Skips discovery when given. |
+| `--dry-run` | `False` | Report what would be merged without writing |
+| `-y`, `--yes` | `False` | Do not prompt for confirmation |
+
+With no `--from`, it searches your home directory and the current directory to
+a bounded depth, skipping hidden and dependency directories.
+
+**Safe to run repeatedly.** Rows are matched on `(timestamp, prompt, model)` —
+timestamps carry microseconds — so a second run merges nothing. Source
+databases are opened read-only and are never modified or deleted; delete them
+yourself once you are satisfied.
+
+Schemas are intersected rather than assumed to match. The table has gained
+columns over releases, so an older database genuinely has fewer; only the
+columns both sides share are copied and the rest are left empty.
 
 ---
 
@@ -652,8 +685,12 @@ Find it:
 ```bash
 find ~ -name greenprompt_usage.db 2>/dev/null
 ```
-Point at one with `GREENPROMPT_DB=/path/to/greenprompt_usage.db greenprompt dashboard`,
-or merge them — see [docs/configuration.md](docs/configuration.md#consolidating-databases-from-older-versions).
+Then merge them into the one in use:
+```bash
+greenprompt migrate --dry-run   # see what would move
+greenprompt migrate
+```
+Or point at a single one with `GREENPROMPT_DB=/path/to/greenprompt_usage.db greenprompt dashboard`.
 
 **`Warning: Power usage data is incomplete or missing`**
 
