@@ -670,6 +670,16 @@ points`), and no context. See
 > correctly. Rows already in your database keep their original scores, so
 > comparisons that straddle the upgrade are not like-for-like.
 
+**`Cannot write to …greenprompt_usage.db. It is owned by root.`**
+
+A database created by an old `sudo greenprompt run` stays owned by root, and
+every later command then fails to save — silently, before 0.5.0. Take ownership:
+```bash
+sudo chown $(whoami) ~/greenprompt_usage.db
+```
+Versions from 0.5.0 hand ownership back to the invoking user, so this only
+affects files created earlier.
+
 **Dashboard shows no data**
 
 Check whether the database actually has rows:

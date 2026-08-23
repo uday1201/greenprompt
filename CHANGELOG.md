@@ -6,7 +6,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **A database left owned by root failed every write silently.** On the machine
+  this was found, `~/greenprompt_usage.db` was created by a `sudo greenprompt
+  run` before that was fixed, and its last row was written the day ownership
+  changed — every prompt in the following year was discarded without the user
+  seeing anything. `run_prompt()` caught the failure and printed a warning
+  which, under the API server, goes to `/tmp/api.log`.
+
+  Three changes. `run_prompt()` now records whether the row was written and the
+  CLI says plainly when it was not, so a discarded measurement no longer looks
+  identical to a saved one. An unwritable database raises `DatabaseNotWritable`
+  naming the file, its owner, and the `chown` that fixes it, instead of
+  SQLite's `attempt to write a readonly database`, which names neither. And
+  `greenprompt migrate` checks the target once up front rather than reporting
+  the target's problem against each source in turn.
+
+  This is the residue of the sudo ownership bug rather than a regression: that
+  fix stopped new root-owned files being created but could do nothing about
+  files already in that state.
 
 ## [0.4.0] — 2026-08-22
 
