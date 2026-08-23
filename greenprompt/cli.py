@@ -13,7 +13,8 @@ See README.md for full usage examples and flag reference.
 
 Sudo policy: no greenprompt command requires the caller to be root. On macOS,
 powermetrics requires root — samplerMac.py calls `sudo powermetrics`
-internally. Run `sudo greenprompt setup` once to configure passwordless sudo
+internally. Run `sudo $(command -v greenprompt) setup` once to configure
+passwordless sudo
 for powermetrics; thereafter all commands run as a normal user.
 """
 

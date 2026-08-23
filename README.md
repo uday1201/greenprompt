@@ -45,7 +45,7 @@ GreenPrompt is a local-first tool that intercepts Ollama LLM calls, measures CPU
 
 ## Requirements
 
-- Python 3.9 or higher
+- Python 3.9–3.13 (`tiktoken` has no 3.14 wheels yet, so 3.14 cannot install)
 - [Ollama](https://ollama.com) installed and running locally
 - **Live power sampling on macOS and Linux** — `powermetrics` on macOS (Apple Silicon or Intel); RAPL, ARM big.LITTLE, or `nvidia-smi` on Linux
 - Windows: scoring, logging, and token tracking work fully; power sampling returns zero (see [Platform Support](#platform-support))
@@ -80,8 +80,9 @@ poetry install
 
 ```bash
 # 1. Initialize (first time only; on macOS run it once with sudo so that
-#    powermetrics can be used without a password prompt afterwards)
-sudo greenprompt setup
+#    powermetrics can be used without a password prompt afterwards).
+#    $(command -v ...) is needed because sudo does not use your PATH.
+sudo $(command -v greenprompt) setup
 
 # 2. Start the API server (required for prompt and dashboard commands)
 greenprompt run --port 5000
@@ -127,8 +128,18 @@ Initializes the environment: detects CPU power capabilities and writes them to t
 On macOS it also installs `/etc/sudoers.d/greenprompt`, which allows `powermetrics` to be sampled without a password. That step is the only reason to use `sudo` here, and it is skipped with an explanatory message if you run without it.
 
 ```bash
-sudo greenprompt setup [--ollama-port PORT]
+sudo $(command -v greenprompt) setup [--ollama-port PORT]
 ```
+
+> **Use an absolute path.** `sudo` replaces `PATH` with `secure_path`, which
+> contains neither `~/.local/bin` nor any virtualenv, so a plain
+> `sudo greenprompt setup` fails with `command not found` for pipx and venv
+> installs. `command -v` resolves it for you:
+>
+> ```bash
+> sudo $(command -v greenprompt) setup
+> ```
+
 
 | Flag | Default | Description |
 |---|---|---|
@@ -621,8 +632,10 @@ greenprompt run --port 5000
 
 The passwordless `powermetrics` rule is not installed, so the sampler cannot read power. Run setup once with sudo:
 ```bash
-sudo greenprompt setup
+sudo $(command -v greenprompt) setup
 ```
+A plain `sudo greenprompt setup` reports `command not found` for pipx and venv
+installs, because sudo replaces `PATH` with `secure_path`.
 
 **Power readings are all zero on Linux**
 
@@ -679,6 +692,22 @@ sudo chown $(whoami) ~/greenprompt_usage.db
 ```
 Versions from 0.5.0 hand ownership back to the invoking user, so this only
 affects files created earlier.
+
+**`sudo: greenprompt: command not found`**
+
+`sudo` does not use your `PATH`. Give it the absolute path:
+```bash
+sudo $(command -v greenprompt) setup
+```
+
+**`error: can't find Rust compiler` when installing**
+
+Your default Python is 3.14, for which `tiktoken` publishes no wheels, so pip
+tries to build it from source. Install under 3.13 or earlier:
+```bash
+pipx install --python python3.13 greenprompt
+# or:  python3.13 -m venv .venv && .venv/bin/pip install greenprompt
+```
 
 **Dashboard shows no data**
 
