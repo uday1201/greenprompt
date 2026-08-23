@@ -6,7 +6,39 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`greenprompt migrate`**, which folds databases left behind by older
+  versions into the one in use. Versions before 0.3.0 resolved the database
+  path from the working directory, so having several is easy — the machine this
+  was developed on had three, holding 10, 2 and 27 rows. Until now the only
+  remedy was a hand-written `sqlite3 ATTACH` recipe in the docs.
+
+  It is safe to run repeatedly: rows are identified by
+  `(timestamp, prompt, model)` and timestamps carry microseconds, so a second
+  run merges nothing. Sources are opened read-only and are never modified or
+  deleted. Schemas are intersected rather than assumed equal — `prompt_score`
+  and `prompt_score_details` arrived with prompt scoring and `energy_estimate_*`
+  later still, so an older database genuinely has fewer columns, which is
+  exactly the kind worth merging. `--dry-run` reports without writing, and
+  `--from` takes explicit sources instead of searching.
+- Indexes on `timestamp` and `model`, the columns `get_prompt_usage()` filters
+  and orders by. Created with `IF NOT EXISTS`, so `init_db()` stays idempotent.
+
+### Fixed
+
+- **`sudo greenprompt setup` wrote the config and database to the wrong place,
+  or left them owned by root.** Setup is documented as the one command to run
+  with `sudo`, because installing the passwordless `powermetrics` rule needs
+  root — but it also creates files, and it resolved their location with
+  `os.path.expanduser("~")`. Depending on how sudo is configured that is either
+  root's home, where the user never looks and a second empty database is
+  created on the next command, or the user's home with root-owned files that
+  every subsequent non-root run then fails to write.
+
+  Paths now resolve against the invoking user (via `SUDO_USER`, which
+  `configure_powermetrics_sudoers()` already relied on), and anything created
+  as root is handed back to that user.
 
 ## [0.3.0] — 2026-08-22
 

@@ -86,6 +86,7 @@ def write_config(cpu_tdp_w: float, cpu_power_source: str) -> str:
     with open(path, "w") as f:
         json.dump(cfg, f, indent=2, sort_keys=True)
         f.write("\n")
+    constants.give_to_invoking_user(path, os.path.dirname(path))
     return path
 
 

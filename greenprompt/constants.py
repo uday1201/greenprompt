@@ -59,12 +59,60 @@ PROCESSOR = platform.processor()
 _OVERRIDABLE = ("OLLAMA_URL", "CPU_TDP_W", "CPU_POWER_SOURCE")
 
 
+def invoking_user_home():
+    """
+    Home directory of the user who invoked GreenPrompt, even under sudo.
+
+    `greenprompt setup` is meant to be run once with sudo on macOS, because
+    installing the passwordless powermetrics rule needs root. Everything else
+    it does — writing the config, creating the database — belongs to the user,
+    not to root. os.path.expanduser("~") cannot tell the difference: depending
+    on how sudo is configured it returns either root's home, so the files land
+    where the user will never look, or the user's home, where the files end up
+    owned by root and the next non-root run cannot write them.
+
+    sudo records who called it in SUDO_USER, which is already how
+    setup.configure_powermetrics_sudoers() identifies the real user.
+    """
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user and hasattr(os, "geteuid") and os.geteuid() == 0:
+        try:
+            import pwd
+
+            return pwd.getpwnam(sudo_user).pw_dir
+        except (ImportError, KeyError):
+            pass
+    return os.path.expanduser("~")
+
+
+def give_to_invoking_user(*paths):
+    """
+    Hand ownership of `paths` to the user who invoked sudo.
+
+    A no-op when not running as root, when sudo did not set SUDO_UID, or on a
+    platform without chown. Files created by root inside a user's home are
+    unwritable by that user afterwards, which would break every subsequent
+    command.
+    """
+    if not hasattr(os, "geteuid") or os.geteuid() != 0:
+        return
+    uid, gid = os.environ.get("SUDO_UID"), os.environ.get("SUDO_GID")
+    if not uid or not gid:
+        return
+    for path in paths:
+        try:
+            os.chown(path, int(uid), int(gid))
+        except (OSError, ValueError):
+            pass
+
+
 def config_path():
     """
     Return the path to the user config file (which may not exist yet).
 
     Honors $GREENPROMPT_CONFIG, then $GREENPROMPT_HOME/config.json, then
-    ~/.greenprompt/config.json.
+    <invoking user's home>/.greenprompt/config.json — see invoking_user_home()
+    for why that is not simply "~".
     """
     explicit = os.environ.get("GREENPROMPT_CONFIG")
     if explicit:
@@ -72,7 +120,7 @@ def config_path():
     home = os.environ.get("GREENPROMPT_HOME")
     if home:
         return os.path.join(os.path.expanduser(home), "config.json")
-    return os.path.join(os.path.expanduser("~"), ".greenprompt", "config.json")
+    return os.path.join(invoking_user_home(), ".greenprompt", "config.json")
 
 
 def load_config():
